@@ -10,6 +10,8 @@ public sealed class ServerConfig
     public string? Name { get; set; }
     public string? LegacyToken { get; set; }
     public Dictionary<string, string> Presets { get; set; } = new();
+    /// <summary>Extra Host header names accepted besides IPs, localhost and the PC name (DNS-rebinding guard).</summary>
+    public List<string>? AllowedHosts { get; set; }
 }
 
 public sealed class PairedDevice

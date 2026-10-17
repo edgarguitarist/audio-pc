@@ -12,7 +12,8 @@ public sealed class PairedStore
     private readonly object _gate = new();
     private readonly string _path;
     private readonly ILogger _log;
-    private readonly ServerConfig _config;
+    private const int MinLegacyTokenLength = 16;
+    private readonly byte[]? _legacyHash; // null = no usable legacy token
     private readonly List<PairedDevice> _devices = new();
 
     public event EventHandler? Changed;
@@ -22,8 +23,16 @@ public sealed class PairedStore
     public PairedStore(string dir, ServerConfig config, ILogger log)
     {
         _path = Path.Combine(dir, "paired.json");
-        _config = config;
         _log = log;
+        // Validated once (config.json is read at startup): a blank or short legacy token would be
+        // trivially guessable, so it is ignored with a single warning instead of accepted.
+        if (!string.IsNullOrWhiteSpace(config.LegacyToken))
+        {
+            if (config.LegacyToken.Length >= MinLegacyTokenLength)
+                _legacyHash = Encoding.ASCII.GetBytes(HashToken(config.LegacyToken));
+            else
+                _log.LogWarning("legacyToken in config.json is shorter than {Min} characters and is ignored", MinLegacyTokenLength);
+        }
         try
         {
             if (File.Exists(_path))
@@ -67,7 +76,7 @@ public sealed class PairedStore
     /// synthetic device (not stored). Compares hashes in constant time.</summary>
     public PairedDevice? Authenticate(string? token)
     {
-        if (string.IsNullOrEmpty(token) || token.Length > 256) return null;
+        if (string.IsNullOrWhiteSpace(token) || token.Length > 256) return null;
         var hash = Encoding.ASCII.GetBytes(HashToken(token));
         PairedDevice? found = null;
         lock (_gate)
@@ -82,8 +91,7 @@ public sealed class PairedStore
             }
         }
         if (found != null) return found;
-        if (!string.IsNullOrEmpty(_config.LegacyToken)
-            && CryptographicOperations.FixedTimeEquals(hash, Encoding.ASCII.GetBytes(HashToken(_config.LegacyToken))))
+        if (_legacyHash != null && CryptographicOperations.FixedTimeEquals(hash, _legacyHash))
             return new PairedDevice { DeviceId = "legacy", DeviceName = "Legacy token" };
         return null;
     }

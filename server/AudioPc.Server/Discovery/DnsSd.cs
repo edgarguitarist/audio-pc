@@ -17,6 +17,13 @@ public sealed class DnsSd : IDisposable
     private IntPtr _request; // unmanaged DNS_SERVICE_REGISTER_REQUEST, reused for deregistration
     private readonly RegisterComplete _callback; // kept in a field so the GC cannot collect it
     private readonly List<IntPtr> _strings = new();
+    private readonly ManualResetEventSlim _regDone = new();
+    private readonly ManualResetEventSlim _deregistered = new();
+    private volatile bool _registered;   // DnsServiceRegister accepted the request
+    private volatile bool _deregistering;
+    // Instances whose deregistration never confirmed: Windows may still touch their unmanaged
+    // memory (and call the delegate), so they stay alive for the rest of the process.
+    private static readonly List<DnsSd> Leaked = new();
 
     private DnsSd(ILogger log) { _log = log; _callback = OnComplete; }
 
@@ -68,27 +75,50 @@ public sealed class DnsSd : IDisposable
             _log.LogWarning("mDNS: DnsServiceRegister returned {Status}", status);
             return false;
         }
+        _registered = true;
         _log.LogInformation("mDNS: registering {Service} on port {Port}", service, port);
         return true;
     }
 
+    // Called by dnsapi on its own thread, for the registration and again for the deregistration.
+    // Must never throw into native code.
     private void OnComplete(uint status, IntPtr context, IntPtr instance)
     {
-        if (status != 0) _log.LogWarning("mDNS registration completed with status {Status}", status);
-        else _log.LogInformation("mDNS registration active");
+        try
+        {
+            if (_deregistering) { _deregistered.Set(); return; }
+            _regDone.Set();
+            if (status != 0) _log.LogWarning("mDNS registration completed with status {Status}", status);
+            else _log.LogInformation("mDNS registration active");
+        }
+        catch { /* logging failure: nothing else to do on a native callback */ }
     }
 
     public void Dispose()
     {
-        try
+        if (_registered && _request != IntPtr.Zero && _instance != IntPtr.Zero)
         {
-            if (_request != IntPtr.Zero && _instance != IntPtr.Zero)
+            var confirmed = false;
+            try
             {
+                // If registration has not completed yet, its callback would be mistaken for the
+                // deregistration one: wait for it first, and leak rather than guess.
+                if (!_regDone.Wait(TimeSpan.FromSeconds(2))) throw new TimeoutException("registration still pending");
+                _deregistering = true;
                 var status = DnsServiceDeRegister(_request, IntPtr.Zero);
-                _log.LogInformation("mDNS: deregistered (status {Status})", status);
+                // The request struct and the instance are only safe to free once the completion
+                // callback has fired; until then dnsapi may still read them.
+                confirmed = status == DnsRequestPending ? _deregistered.Wait(TimeSpan.FromSeconds(2)) : status == 0;
+                _log.LogInformation("mDNS: deregistered (status {Status}, confirmed {Confirmed})", status, confirmed);
+            }
+            catch (Exception ex) { _log.LogDebug(ex, "mDNS deregistration"); }
+            _registered = false;
+            if (!confirmed)
+            {
+                lock (Leaked) Leaked.Add(this); // keep memory + delegate alive; the process is exiting anyway
+                return;
             }
         }
-        catch (Exception ex) { _log.LogDebug(ex, "mDNS deregistration"); }
         if (_instance != IntPtr.Zero) { DnsServiceFreeInstance(_instance); _instance = IntPtr.Zero; }
         if (_request != IntPtr.Zero) { Marshal.FreeHGlobal(_request); _request = IntPtr.Zero; }
         foreach (var p in _strings) Marshal.FreeHGlobal(p);

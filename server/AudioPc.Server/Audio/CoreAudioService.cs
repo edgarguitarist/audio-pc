@@ -16,12 +16,18 @@ namespace AudioPc.Server.Audio;
 public sealed class CoreAudioService : IAudioService
 {
     private static readonly TimeSpan Debounce = TimeSpan.FromMilliseconds(50);
+    // Upper bound for one marshalled call, so a wedged COM call cannot hang HTTP requests forever.
+    private static readonly TimeSpan CallTimeout = TimeSpan.FromSeconds(15);
 
-    private readonly BlockingCollection<Action> _queue = new();
+    /// <summary>A unit of work for the COM thread; <c>Fail</c> completes its caller if it can never run.</summary>
+    private readonly record struct WorkItem(Action Work, Action<Exception>? Fail);
+
+    private readonly BlockingCollection<WorkItem> _queue = new();
     private readonly Thread _thread;
     private readonly System.Threading.Timer _timer;
     private readonly NotificationClient _client;
     private volatile bool _disposed;
+    private volatile bool _workerDead;
 
     // Worker-thread state.
     private MMDeviceEnumerator _enumerator = null!;
@@ -32,7 +38,10 @@ public sealed class CoreAudioService : IAudioService
 
     public CoreAudioService()
     {
-        _timer = new System.Threading.Timer(_ => Raise(), null, Timeout.Infinite, Timeout.Infinite);
+        _timer = new System.Threading.Timer(_ =>
+        {
+            try { Raise(); } catch { /* timer callbacks must never throw: it would kill the process */ }
+        }, null, Timeout.Infinite, Timeout.Infinite);
         _client = new NotificationClient(this);
         using var ready = new ManualResetEventSlim();
         Exception? failure = null;
@@ -47,9 +56,25 @@ public sealed class CoreAudioService : IAudioService
             catch (Exception ex) { failure = ex; }
             ready.Set();
             if (failure != null) return;
-            foreach (var work in _queue.GetConsumingEnumerable())
-                work();
-            Teardown();
+            try
+            {
+                foreach (var item in _queue.GetConsumingEnumerable())
+                {
+                    // No exception type may end this loop: every caller would then block forever.
+                    try { item.Work(); }
+                    catch (Exception ex) { try { item.Fail?.Invoke(ex); } catch { } }
+                }
+                Teardown();
+            }
+            finally
+            {
+                // Normally reached after Dispose. If the thread dies for any other reason, make
+                // later calls fail fast and release the ones already queued.
+                _workerDead = true;
+                try { _queue.CompleteAdding(); } catch (ObjectDisposedException) { }
+                var gone = new InvalidOperationException("Core Audio worker thread stopped");
+                while (_queue.TryTake(out var left)) { try { left.Fail?.Invoke(gone); } catch { } }
+            }
         }) { IsBackground = true, Name = "AudioPC CoreAudio" };
         _thread.SetApartmentState(ApartmentState.MTA);
         _thread.Start();
@@ -182,17 +207,24 @@ public sealed class CoreAudioService : IAudioService
     private T Run<T>(Func<T> func)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_workerDead) throw new InvalidOperationException("Core Audio worker thread stopped");
         if (Thread.CurrentThread == _thread) return func();
         var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
         try
         {
-            _queue.Add(() =>
-            {
-                try { tcs.SetResult(func()); }
-                catch (Exception ex) { tcs.SetException(ex); }
-            });
+            _queue.Add(new WorkItem(
+                () =>
+                {
+                    try { tcs.TrySetResult(func()); }
+                    catch (Exception ex) { tcs.TrySetException(ex); }
+                },
+                ex => tcs.TrySetException(ex)));
         }
         catch (InvalidOperationException) { throw new ObjectDisposedException(nameof(CoreAudioService)); }
+        bool done;
+        try { done = tcs.Task.Wait(CallTimeout); }
+        catch (AggregateException) { done = true; } // faulted: GetResult rethrows the original exception
+        if (!done) throw new TimeoutException("Core Audio call timed out");
         return tcs.Task.GetAwaiter().GetResult();
     }
 
@@ -217,7 +249,7 @@ public sealed class CoreAudioService : IAudioService
     private void OnDefaultChanged()
     {
         // Re-subscribe volume on the worker; never block the COM callback thread.
-        try { _queue.Add(AttachVolume); } catch (InvalidOperationException) { }
+        try { _queue.Add(new WorkItem(AttachVolume, null)); } catch (InvalidOperationException) { }
         Signal();
     }
 

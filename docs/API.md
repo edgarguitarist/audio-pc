@@ -9,7 +9,34 @@ here is ambiguous, fix this document first, then the code.
 - All JSON property names are **camelCase**.
 - Errors: non-2xx status with body `{ "error": "<code>", "message": "<human text>" }`.
   Error codes used: `unauthorized`, `forbidden`, `not_found`, `bad_request`,
-  `pairing_expired`, `pairing_bad_code`, `pairing_locked`, `audio_error`.
+  `pairing_expired`, `pairing_bad_code`, `pairing_locked`, `rate_limited`,
+  `unsupported_media_type`, `misdirected_request`, `audio_error`.
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `bad_request` | malformed body or parameters |
+| 401 | `unauthorized` | missing/invalid token |
+| 403 | `forbidden` | WebSocket with a foreign `Origin` (§4) |
+| 403 | `pairing_bad_code` | wrong pairing code |
+| 404 | `not_found` | unknown output / endpoint / file |
+| 410 | `pairing_expired` | unknown or expired pairing request |
+| 415 | `unsupported_media_type` | a `POST /api/*` without `Content-Type: application/json` |
+| 421 | `misdirected_request` | `Host` header that is not a name of this PC (see below) |
+| 423 | `pairing_locked` | too many wrong codes (per request, or the global lock of §2) |
+| 429 | `rate_limited` | a rate or connection limit was hit (§2, §4); retry later |
+| 500 | `audio_error` | Windows audio call failed |
+
+- **Request rules** (they protect the API from web pages open in a browser on the LAN):
+  - Every `POST /api/*` must send `Content-Type: application/json` (parameters such as
+    `charset` are ignored), otherwise `415`. A cross-origin page cannot send that header without a
+    CORS preflight, and the server never answers preflights. The legacy `/audio/*` POSTs (§5)
+    take query parameters and need no `Content-Type`.
+  - The `Host` header must be an IP literal (IPv4/IPv6), `localhost`, the PC name, `<PC name>.local`,
+    `<PC name>.<DNS suffix of a network adapter>`, the configured display name,
+    `host.docker.internal`, or a name listed in `allowedHosts` (§6). Anything else gets
+    `421 misdirected_request` (DNS-rebinding defence). This applies to every path and port.
+  - Responses of `/api/*`, `/audio/*` and `/health` carry `Cache-Control: no-store` (except
+    `/api/images/*`, see §3).
 
 ## 1. Discovery
 
@@ -22,7 +49,9 @@ runs 1 and 2 at the same time, then 3 if nothing answered within ~2 s):
 2. **UDP broadcast**: the client sends the ASCII datagram `AUDIOPC_DISCOVER 1` to
    `255.255.255.255:7798` (and to the subnet broadcast address). Every server answers
    **unicast to the sender's address/port** with the same JSON as `GET /api/info`, plus the
-   field `"port": 7799`.
+   field `"port": 7799`. The datagram must be exactly those 18 bytes (anything else is ignored),
+   and replies are rate limited (5/s per source address, 50/s in total) so the server cannot be
+   used as a UDP reflector.
 3. **Subnet sweep**: the client calls `GET http://<ip>:7799/api/info` for every host of its
    /24 (Wi-Fi) subnet, ~64 at a time, 600 ms timeout. A host is a server if the response has
    `"service": "audio-pc"`.
@@ -50,7 +79,11 @@ host of the server with the same `serverId`. Users can also add a server by hand
 
 Every request below `/api/` except `/api/info`, `/api/pair/*` and `/api/images/*` needs
 `Authorization: Bearer <token>`. WebSocket clients that cannot send headers (browsers) may
-pass `?token=<token>` instead.
+pass `?token=<token>` instead. For compatibility with the old Node server, an `Authorization`
+header without the `Bearer ` scheme is taken as the bare token (`Authorization: <token>`).
+
+**Failed-auth throttling**: after 20 requests answered `401` from the same IP address within a
+minute, that address gets `429 rate_limited` for one minute (even with a valid token).
 
 Pairing (trust on first use, like Bluetooth):
 
@@ -58,13 +91,24 @@ Pairing (trust on first use, like Bluetooth):
    → `200 { "requestId": "<opaque>", "expiresIn": 120 }`.
    The server generates a random **6-digit code** and shows it on the PC (tray balloon /
    notification + the tray window), together with `deviceName`. One pending request per
-   `deviceId`; a new request replaces the old one.
+   `deviceId`: a new request from the same IP address replaces the old one.
+   - `deviceName` (max 64) and `deviceId` (max 128) are required; control and format characters
+     (including bidi overrides) are stripped and the result trimmed before the limits apply, and
+     an empty result is `400 bad_request`.
+   - Limits (all `429 rate_limited`): 5 requests per minute per IP address; at most 2 pending
+     requests per IP address; at most 10 pending requests in total. A new request never evicts
+     someone else's pending request.
 2. The user types the code on the phone.
 3. `POST /api/pair/confirm` — body `{ "requestId": "...", "code": "123456" }`
    → `200 { "token": "<secret>", "serverId": "...", "serverName": "PC-EDGAR" }`.
    - Wrong code → `403 pairing_bad_code` (5 wrong attempts per request → `423 pairing_locked`,
      the request is discarded).
    - Unknown/expired request → `410 pairing_expired`.
+   - **Global lock**: after 10 wrong codes within 10 minutes, counted across all requests and
+     all IP addresses, pairing is disabled: every pending request is discarded and both
+     `/api/pair/request` and `/api/pair/confirm` answer `423 pairing_locked` (with a message
+     telling the user what to do) until the user chooses "Allow pairing again" in the tray menu.
+     The tray shows one balloon when this happens. Already paired devices are not affected.
 
 Tokens: 32 random bytes, base64url without padding. The server stores only their SHA-256 hash,
 with `deviceId`, `deviceName`, `createdAt`, `lastSeen`. Pairing again from the same
@@ -74,7 +118,8 @@ A request with a missing/invalid token gets `401 unauthorized`; the app then goe
 pairing for that server.
 
 **Legacy token**: the config may define `legacyToken` (the token Home Assistant already uses).
-It is accepted anywhere a paired token is, so existing integrations keep working.
+It is accepted anywhere a paired token is, so existing integrations keep working. A blank
+legacy token, or one shorter than 16 characters, is ignored (with a warning in the log).
 
 ## 3. State
 
@@ -132,7 +177,13 @@ Serves `<dataDir>/images/{file}`; `file` must match `^[a-z0-9-]+\.(webp|png|jpg)
 
 ## 4. Live events — WebSocket `GET /api/events`
 
-Auth: `Authorization` header or `?token=`. After the upgrade the server sends, as text frames:
+Auth: `Authorization` header or `?token=`. If the upgrade request has an `Origin` header, its
+host and port must equal the request's `Host`, otherwise `403 forbidden` (a page of another
+site cannot open the socket). Limits: 8 open sockets per paired device (or legacy token) and 64
+in total; beyond that the upgrade is refused with `429 rate_limited`. A send that does not
+complete within 5 s (the client stopped reading) closes that socket.
+
+After the upgrade the server sends, as text frames:
 
 - immediately: `{ "type": "state", "state": { ...same as GET /api/state... } }`
 - on any change (default device changed, device added/removed/state changed, volume or mute
@@ -146,7 +197,9 @@ reconnect with backoff (1 s, 2 s, 5 s, then every 10 s) and fall back to polling
 
 ## 5. Legacy endpoints (compatibility with the old Node server / Home Assistant)
 
-Same auth as above (legacy token or paired token; `?token=` also accepted).
+Same auth as above (legacy token or paired token; `?token=` also accepted; bare
+`Authorization: <token>` too). These POSTs take query parameters and need no body or
+`Content-Type`.
 
 | Method | Path | Behaviour |
 |---|---|---|
@@ -162,8 +215,14 @@ Same auth as above (legacy token or paired token; `?token=` also accepted).
 
 `<dataDir>` = `%APPDATA%\AudioPC\`:
 
-- `config.json` — `{ "serverId", "port": 7799, "name": null, "legacyToken": null, "presets": {} }`
+- `config.json` — `{ "serverId", "port": 7799, "name": null, "legacyToken": null, "presets": {}, "allowedHosts": null }`
   (`name: null` → use the PC name).
+  - `allowedHosts`: optional array of extra host names accepted in the `Host` header (request
+    rules at the top), e.g. `["audio.home.arpa", "pc-edgar.mydomain"]`, for clients that reach
+    the PC by a DNS name not covered by the defaults. Case-insensitive, without port.
+  - A hand-written file without `serverId` (e.g. `{ "legacyToken": "...", "presets": {...} }`)
+    is kept: the server only adds `serverId` and preserves every other field. Only a file that
+    cannot be parsed is moved to `config.json.bad` and recreated.
 - `paired.json` — paired devices (token hashes).
 - `devices.json` — display config (below). Re-read when it changes (file watcher).
 - `images/` — device photos referenced by `devices.json`.
@@ -192,7 +251,7 @@ Windows names outputs `"<connector> (<device>)"`, e.g. `"Altavoces (JBL Tour Pro
   kind label; otherwise `name` = connector part and `detail` = device part.
 - `kind` from the whole raw name (first rule that matches):
   `virtual` (broadcast|virtual|vb-audio|voicemeeter|cable input/output|steam streaming|sonar|wave link),
-  `tv` (\btv\b|hdmi|high definition audio|display audio|tcl|bravia|samsung|lg tv|monitor),
+  `tv` (\btv\b|hdmi|(nvidia|amd|ati|intel).*high definition audio|display audio|tcl|bravia|samsung|lg tv|monitor),
   `headset` (headset|micrófono|microfono|hs\d|arctis|cloud|blackshark),
   `earbuds` (buds|airpods|tour pro|wf-|earbuds|tws|live pro|jbl),
   `headphones` (auricular|audífono|audifono|headphone|cascos|wh-), else `speaker`.
@@ -205,3 +264,10 @@ Windows names outputs `"<connector> (<device>)"`, e.g. `"Altavoces (JBL Tour Pro
 The server serves the web panel from `wwwroot/` at `/`. The panel has no token embedded: on
 first use it runs the same pairing flow (`deviceName` = "Navegador"/"Browser" + user agent
 summary) and keeps the token in `localStorage`.
+
+Panel responses carry `Content-Security-Policy: default-src 'self'; img-src 'self' data:;
+style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:;
+frame-ancestors 'none'; base-uri 'none'; form-action 'none'`, plus `X-Frame-Options: DENY`,
+`X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`. The panel must therefore
+load nothing from other origins, and every JSON `fetch` must set `Content-Type: application/json`
+explicitly (a string body defaults to `text/plain`).

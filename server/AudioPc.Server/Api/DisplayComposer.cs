@@ -21,11 +21,12 @@ public sealed class DisplayComposer
     private static readonly Regex Duplicate = new(@"^\d+-\s*", RegexOptions.Compiled);
     private static readonly Regex Suffix = new(@"\s+(Gaming\s+Headset|Headset)$", Ci | RegexOptions.Compiled);
 
-    // First rule that matches wins, in this order.
+    // First rule that matches wins, in this order. "High Definition Audio" alone is also
+    // Realtek's analog driver, so it only means HDMI/DP next to a GPU vendor.
     private static readonly (string Kind, Regex Rx)[] KindRules =
     {
         ("virtual", new(@"broadcast|virtual|vb-audio|voicemeeter|cable (input|output)|steam streaming|sonar|wave link", Ci | RegexOptions.Compiled)),
-        ("tv", new(@"\btv\b|hdmi|high definition audio|display audio|tcl|bravia|samsung|lg tv|monitor", Ci | RegexOptions.Compiled)),
+        ("tv", new(@"\btv\b|hdmi|(nvidia|amd|ati|intel).*high definition audio|display audio|tcl|bravia|samsung|lg tv|monitor", Ci | RegexOptions.Compiled)),
         ("headset", new(@"headset|micr[oó]fono|hs\d|arctis|cloud|blackshark", Ci | RegexOptions.Compiled)),
         ("earbuds", new(@"buds|airpods|tour pro|wf-|earbuds|tws|live pro|jbl", Ci | RegexOptions.Compiled)),
         ("headphones", new(@"auricular|aud[ií]fono|headphone|cascos|wh-", Ci | RegexOptions.Compiled)),

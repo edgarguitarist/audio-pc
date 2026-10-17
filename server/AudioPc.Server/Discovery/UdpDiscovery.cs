@@ -10,6 +10,14 @@ namespace AudioPc.Server.Discovery;
 public sealed class UdpDiscovery : IDisposable
 {
     public const int DiscoveryPort = 7798;
+    private static readonly byte[] Probe = Encoding.ASCII.GetBytes("AUDIOPC_DISCOVER 1");
+    // Our reply is much larger than the probe, so a spoofed source address could use us as a
+    // reflector/amplifier: cap replies per source and overall (fixed one-second windows).
+    private const int MaxRepliesPerIpPerSecond = 5;
+    private const int MaxRepliesPerSecond = 50;
+    private readonly Dictionary<IPAddress, int> _perIp = new();
+    private long _windowStart;
+    private int _windowTotal;
     private readonly UdpClient _udp;
     private readonly CancellationTokenSource _cts = new();
     private readonly ILogger _log;
@@ -37,21 +45,39 @@ public sealed class UdpDiscovery : IDisposable
 
     private async Task Loop(Func<int, string> reply, int httpPort)
     {
-        var payload = Encoding.UTF8.GetBytes(reply(httpPort));
-        while (!_cts.IsCancellationRequested)
+        try
         {
-            try
+            var payload = Encoding.UTF8.GetBytes(reply(httpPort));
+            while (!_cts.IsCancellationRequested)
             {
-                var r = await _udp.ReceiveAsync(_cts.Token);
-                if (Encoding.ASCII.GetString(r.Buffer).Trim() == "AUDIOPC_DISCOVER 1")
-                    await _udp.SendAsync(payload, r.RemoteEndPoint, _cts.Token);
+                try
+                {
+                    var r = await _udp.ReceiveAsync(_cts.Token);
+                    if (r.Buffer.AsSpan().SequenceEqual(Probe) && AllowReply(r.RemoteEndPoint.Address))
+                        await _udp.SendAsync(payload, r.RemoteEndPoint, _cts.Token);
+                }
+                catch (OperationCanceledException) { return; }
+                catch (ObjectDisposedException) { return; }
+                // ICMP "port unreachable" from a client that already left surfaces as a reset; keep going.
+                catch (SocketException) { }
+                catch (Exception ex) { _log.LogDebug(ex, "discovery loop"); }
             }
-            catch (OperationCanceledException) { return; }
-            catch (ObjectDisposedException) { return; }
-            // ICMP "port unreachable" from a client that already left surfaces as a reset; keep going.
-            catch (SocketException) { }
-            catch (Exception ex) { _log.LogDebug(ex, "discovery loop"); }
         }
+        catch (Exception ex) { _log.LogError(ex, "UDP discovery stopped"); }
+    }
+
+    // Only the loop thread calls this. The per-IP table is cleared every second and only grows
+    // while the global budget allows, so it holds at most MaxRepliesPerSecond entries.
+    private bool AllowReply(IPAddress ip)
+    {
+        var now = Environment.TickCount64;
+        if (now - _windowStart >= 1000) { _windowStart = now; _windowTotal = 0; _perIp.Clear(); }
+        if (_windowTotal >= MaxRepliesPerSecond) return false;
+        _perIp.TryGetValue(ip, out var n);
+        if (n >= MaxRepliesPerIpPerSecond) return false;
+        _perIp[ip] = n + 1;
+        _windowTotal++;
+        return true;
     }
 
     public static string BuildReply(object info, int port)

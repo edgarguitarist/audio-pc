@@ -15,6 +15,10 @@ public sealed class EventHub : IDisposable
     private static readonly TimeSpan MinInterval = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan PingEvery = TimeSpan.FromSeconds(30);
     private static readonly byte[] Ping = Encoding.UTF8.GetBytes("{\"type\":\"ping\"}");
+    // A client that stops reading would otherwise park a send (and its buffers) forever.
+    private static readonly TimeSpan SendTimeout = TimeSpan.FromSeconds(5);
+    private const int MaxPerDevice = 8;
+    private const int MaxTotal = 64;
 
     private sealed class Client
     {
@@ -24,6 +28,9 @@ public sealed class EventHub : IDisposable
     }
 
     private readonly ConcurrentDictionary<Client, byte> _clients = new();
+    private readonly object _slotsGate = new();
+    private readonly Dictionary<string, int> _perDevice = new();
+    private int _total;
     private readonly IAudioService _audio;
     private readonly DisplayComposer _composer;
     private readonly ILogger _log;
@@ -38,8 +45,36 @@ public sealed class EventHub : IDisposable
 
     private void OnChanged(object? sender, EventArgs e)
     {
-        // Bounded(1)+DropWrite: any number of changes while a client is busy collapse into one pending signal.
-        foreach (var c in _clients.Keys) c.Signal.Writer.TryWrite(true);
+        // Raised from audio/timer threads: never let an exception escape.
+        try
+        {
+            // Bounded(1)+DropWrite: any number of changes while a client is busy collapse into one pending signal.
+            foreach (var c in _clients.Keys) c.Signal.Writer.TryWrite(true);
+        }
+        catch (Exception ex) { _log.LogError(ex, "events fan-out failed"); }
+    }
+
+    /// <summary>Reserves a connection slot; false when the device or the server is at its cap.</summary>
+    private bool TryReserve(string deviceId)
+    {
+        lock (_slotsGate)
+        {
+            _perDevice.TryGetValue(deviceId, out var n);
+            if (n >= MaxPerDevice || _total >= MaxTotal) return false;
+            _perDevice[deviceId] = n + 1;
+            _total++;
+            return true;
+        }
+    }
+
+    private void Release(string deviceId)
+    {
+        lock (_slotsGate)
+        {
+            _total--;
+            if (_perDevice.TryGetValue(deviceId, out var n) && n > 1) _perDevice[deviceId] = n - 1;
+            else _perDevice.Remove(deviceId);
+        }
     }
 
     /// <summary>Closes every socket of a revoked device.</summary>
@@ -49,6 +84,19 @@ public sealed class EventHub : IDisposable
     }
 
     public async Task HandleAsync(HttpContext ctx, string deviceId, CancellationToken appStopping)
+    {
+        // Caps are checked before the upgrade so a refused client gets a plain HTTP 429.
+        if (!TryReserve(deviceId))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+            await ctx.Response.WriteAsJsonAsync(new { error = "rate_limited", message = "Too many open event connections." });
+            return;
+        }
+        try { await HandleReservedAsync(ctx, deviceId, appStopping); }
+        finally { Release(deviceId); }
+    }
+
+    private async Task HandleReservedAsync(HttpContext ctx, string deviceId, CancellationToken appStopping)
     {
         using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
         var spanish = DisplayComposer.IsSpanish(ctx.Request.Headers.AcceptLanguage);
@@ -98,7 +146,7 @@ public sealed class EventHub : IDisposable
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
-                await ws.SendAsync(Ping, WebSocketMessageType.Text, true, ct); // idle for 30 s
+                await SendAsync(ws, Ping, ct); // idle for 30 s
                 continue;
             }
             client.Signal.Reader.TryRead(out _);
@@ -127,7 +175,16 @@ public sealed class EventHub : IDisposable
     private async Task SendStateAsync(WebSocket ws, bool spanish, CancellationToken ct)
     {
         var json = JsonSerializer.SerializeToUtf8Bytes(new { type = "state", state = _composer.BuildState(spanish) }, JsonOptions.Compact);
-        await ws.SendAsync(json, WebSocketMessageType.Text, true, ct);
+        await SendAsync(ws, json, ct);
+    }
+
+    /// <summary>Send with a deadline: cancelling a WebSocket send aborts the socket, which is
+    /// exactly what we want for a client that stopped reading.</summary>
+    private static async Task SendAsync(WebSocket ws, byte[] payload, CancellationToken ct)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(SendTimeout);
+        await ws.SendAsync(payload, WebSocketMessageType.Text, true, deadline.Token);
     }
 
     public void Dispose()

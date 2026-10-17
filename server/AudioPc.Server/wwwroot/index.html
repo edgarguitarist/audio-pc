@@ -671,7 +671,8 @@ async function confirmCode(code) {
       $('pair-sub').textContent = L.pairExpired;
       pairMsg(L.pairExpiredMsg, true);
     } else if (e.status === 423) {
-      requestCode().then(() => pairMsg(L.pairLocked, true));
+      // If the new request is refused too (global lock), keep the server's explanation visible.
+      requestCode().then(() => { if (pairing.requestId) pairMsg(L.pairLocked, true); });
     } else {
       pairMsg(e.message || L.pairFail, true);
     }

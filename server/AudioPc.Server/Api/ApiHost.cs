@@ -3,6 +3,7 @@ using System.Text.Json;
 using AudioPc.Server.Audio;
 using AudioPc.Server.Data;
 using Microsoft.Extensions.Logging;
+using Microsoft.Net.Http.Headers;
 
 namespace AudioPc.Server.Api;
 
@@ -19,11 +20,18 @@ public sealed class ApiHost
     private readonly DisplayComposer _composer;
     private readonly EventHub _hub;
     private readonly ILogger _log;
+    private readonly HostGuard _hosts;
+    private readonly AuthThrottle _authThrottle = new();
+
+    // The panel is a single file with inline script/style; everything else must come from us.
+    private const string PanelCsp = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+        + "script-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 
     public ApiHost(IAudioService audio, DataStore data, PairedStore paired, PairingService pairing,
         DisplayComposer composer, EventHub hub, ILogger log)
     {
         _audio = audio; _data = data; _paired = paired; _pairing = pairing; _composer = composer; _hub = hub; _log = log;
+        _hosts = new HostGuard(() => ((IEnumerable<string?>?)_data.Config.AllowedHosts ?? []).Append(ServerName), log);
     }
 
     public static string AppVersion => Version;
@@ -47,6 +55,7 @@ public sealed class ApiHost
         builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
 
         var app = builder.Build();
+        app.Use(Guardrails);
         app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.Zero });
         app.Use(Auth);
         MapRoutes(app);
@@ -64,15 +73,67 @@ public sealed class ApiHost
               || path.StartsWith("/api/images/", StringComparison.OrdinalIgnoreCase));
     }
 
+    private static bool IsApiOrLegacy(string path) =>
+        path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase) || path.StartsWith("/audio/", StringComparison.OrdinalIgnoreCase)
+        || path.Equals("/health", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Host check, response headers and Content-Type check — before auth and routing.</summary>
+    private async Task Guardrails(HttpContext ctx, RequestDelegate next)
+    {
+        var path = ctx.Request.Path.Value ?? "";
+        var h = ctx.Response.Headers;
+        h.XContentTypeOptions = "nosniff";
+        if (!_hosts.IsAllowed(ctx.Request.Host.Host))
+        {
+            h.CacheControl = "no-store";
+            await Err(421, "misdirected_request", "Unknown Host header; add it to \"allowedHosts\" in config.json if it is a name of this PC.").ExecuteAsync(ctx);
+            return;
+        }
+        if (IsApiOrLegacy(path))
+        {
+            // Tokens and device state must not linger in browser or proxy caches; the image
+            // endpoint overrides this with its own immutable policy.
+            h.CacheControl = "no-store";
+        }
+        else
+        {
+            h.ContentSecurityPolicy = PanelCsp;
+            h.XFrameOptions = "DENY";
+            h["Referrer-Policy"] = "no-referrer";
+        }
+        // Every JSON-body endpoint requires application/json. That is not a CORS "simple" content
+        // type, so a cross-origin page cannot POST without a preflight, and we never answer one.
+        // Legacy /audio/* POSTs take query parameters and keep working without the header.
+        if (HttpMethods.IsPost(ctx.Request.Method) && path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase) && !IsJson(ctx.Request.ContentType))
+        {
+            await Err(415, "unsupported_media_type", "Content-Type must be application/json.").ExecuteAsync(ctx);
+            return;
+        }
+        await next(ctx);
+    }
+
+    private static bool IsJson(string? contentType) =>
+        MediaTypeHeaderValue.TryParse(contentType, out var mt) && mt.MediaType.Equals("application/json", StringComparison.OrdinalIgnoreCase);
+
+    private static string RemoteIp(HttpContext ctx) => ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
     private async Task Auth(HttpContext ctx, RequestDelegate next)
     {
-        ctx.Response.Headers.XContentTypeOptions = "nosniff";
         if (NeedsAuth(ctx.Request.Path.Value ?? ""))
         {
+            var ip = RemoteIp(ctx);
+            if (_authThrottle.IsBlocked(ip))
+            {
+                await Err(429, "rate_limited", "Too many failed authentications; try again in a minute.").ExecuteAsync(ctx);
+                return;
+            }
             var device = _paired.Authenticate(ExtractToken(ctx.Request));
             if (device == null)
             {
-                await Err(401, "unauthorized", "Missing or invalid token.").ExecuteAsync(ctx);
+                if (_authThrottle.RecordFailure(ip))
+                    await Err(429, "rate_limited", "Too many clients failing authentication; try again in a minute.").ExecuteAsync(ctx);
+                else
+                    await Err(401, "unauthorized", "Missing or invalid token.").ExecuteAsync(ctx);
                 return;
             }
             ctx.Items[DeviceKey] = device;
@@ -87,12 +148,18 @@ public sealed class ApiHost
 
     private static string? ExtractToken(HttpRequest r)
     {
-        var h = r.Headers.Authorization.ToString();
+        var h = r.Headers.Authorization.ToString().Trim();
         if (h.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)) return h[7..].Trim();
+        // The old Node server accepted the bare token ("Authorization: <token>"); Home Assistant
+        // setups still send it that way.
+        if (h.Length > 0) return h;
         return r.Query["token"].FirstOrDefault();
     }
 
     // ---- helpers ------------------------------------------------------------------------------
+
+    private const string PairingLockedMessage =
+        "Pairing is disabled after too many wrong codes. On the PC, choose \"Allow pairing again\" in the Audio PC tray menu.";
 
     private static IResult Err(int status, string code, string message) =>
         Results.Json(new { error = code, message }, statusCode: status);
@@ -132,6 +199,18 @@ public sealed class ApiHost
     private object Vol(VolumeState v) => new { volume = v.Volume, muted = v.Muted };
     private object LegacyVol(VolumeState v) => new { ok = true, volume = v.Volume, muted = v.Muted };
 
+    /// <summary>No Origin (native clients) is fine; otherwise its host:port must be the request's Host.</summary>
+    private static bool OriginMatchesHost(HttpRequest r)
+    {
+        var origin = r.Headers.Origin.ToString();
+        if (string.IsNullOrEmpty(origin)) return true;
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out var o) || (o.Scheme != "http" && o.Scheme != "https")) return false;
+        var host = r.Host;
+        if (!host.HasValue) return false;
+        var hostPort = host.Port ?? (r.IsHttps ? 443 : 80);
+        return string.Equals(o.Host.Trim('[', ']'), host.Host.Trim('[', ']'), StringComparison.OrdinalIgnoreCase) && o.Port == hostPort;
+    }
+
     private IResult State(HttpContext ctx) =>
         Guard(() => Results.Json(_composer.BuildState(DisplayComposer.IsSpanish(ctx.Request.Headers.AcceptLanguage))));
 
@@ -149,15 +228,31 @@ public sealed class ApiHost
         app.MapPost("/api/pair/request", async (HttpContext ctx) =>
         {
             var body = await ReadBody(ctx.Request);
-            var deviceId = body is { } b ? Str(b, "deviceId")?.Trim() : null;
-            var deviceName = body is { } b2 ? Str(b2, "deviceName")?.Trim() : null;
-            if (string.IsNullOrEmpty(deviceId) || string.IsNullOrEmpty(deviceName) || deviceId.Length > 128 || deviceName.Length > 64)
+            var rawId = body is { } b ? Str(b, "deviceId") : null;
+            var rawName = body is { } b2 ? Str(b2, "deviceName") : null;
+            // Names end up in the log, the tray menu and a balloon: strip control/bidi characters
+            // so a client cannot forge log lines or make the balloon read differently.
+            var deviceId = rawId is { Length: <= 512 } ? TextSafety.Clean(rawId) : "";
+            var deviceName = rawName is { Length: <= 512 } ? TextSafety.Clean(rawName) : "";
+            if (deviceId.Length == 0 || deviceName.Length == 0 || deviceId.Length > 128 || deviceName.Length > 64)
                 return Err(400, "bad_request", "deviceName (max 64) and deviceId (max 128) are required.");
-            var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-            var pending = _pairing.Request(ip, deviceId, deviceName);
-            if (pending == null) return Err(429, "forbidden", "Too many pairing requests; try again in a minute.");
-            _log.LogInformation("pairing requested by {Device} ({Ip})", deviceName, ip);
-            return Results.Json(new { requestId = pending.RequestId, expiresIn = PairingService.ExpiresInSeconds });
+            var ip = RemoteIp(ctx);
+            switch (_pairing.Request(ip, deviceId, deviceName, out var pending))
+            {
+                case RequestStatus.Ok:
+                    _log.LogInformation("pairing requested by {Device} ({Ip})", deviceName, ip);
+                    return Results.Json(new { requestId = pending!.RequestId, expiresIn = PairingService.ExpiresInSeconds });
+                case RequestStatus.GloballyLocked:
+                    return Err(423, "pairing_locked", PairingLockedMessage);
+                case RequestStatus.TooManyPendingForIp:
+                    return Err(429, "rate_limited", "Too many pending pairing requests from this address; finish one or wait for it to expire.");
+                case RequestStatus.TooManyPending:
+                    return Err(429, "rate_limited", "Too many pending pairing requests; try again in a couple of minutes.");
+                case RequestStatus.TooManyClients:
+                    return Err(429, "rate_limited", "Too many clients are pairing; try again in a minute.");
+                default:
+                    return Err(429, "rate_limited", "Too many pairing requests; try again in a minute.");
+            }
         });
 
         app.MapPost("/api/pair/confirm", async (HttpContext ctx) =>
@@ -174,6 +269,7 @@ public sealed class ApiHost
                     return Results.Json(new { token, serverId = _data.Config.ServerId, serverName = ServerName });
                 case ConfirmResult.BadCode: return Err(403, "pairing_bad_code", "Wrong code.");
                 case ConfirmResult.Locked: return Err(423, "pairing_locked", "Too many wrong codes; request a new one.");
+                case ConfirmResult.GloballyLocked: return Err(423, "pairing_locked", PairingLockedMessage);
                 default: return Err(410, "pairing_expired", "Unknown or expired pairing request.");
             }
         });
@@ -231,6 +327,9 @@ public sealed class ApiHost
         app.MapGet("/api/events", async (HttpContext ctx) =>
         {
             if (!ctx.WebSockets.IsWebSocketRequest) { await Err(400, "bad_request", "WebSocket upgrade required.").ExecuteAsync(ctx); return; }
+            // Browsers do not apply CORS to WebSockets; the Origin header is the only sign that
+            // another site opened this socket (cross-site WebSocket hijacking).
+            if (!OriginMatchesHost(ctx.Request)) { await Err(403, "forbidden", "Cross-origin WebSocket refused.").ExecuteAsync(ctx); return; }
             var deviceId = ((PairedDevice)ctx.Items[DeviceKey]!).DeviceId;
             await _hub.HandleAsync(ctx, deviceId, ctx.RequestServices.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping);
         });

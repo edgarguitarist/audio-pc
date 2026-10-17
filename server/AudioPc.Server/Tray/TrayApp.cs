@@ -38,6 +38,7 @@ internal sealed class TrayApp : ApplicationContext
         _icon.DoubleClick += (_, _) => OpenPanel();
 
         _pairing.CodeIssued += OnCodeIssued;
+        _pairing.LockChanged += OnPairingLockChanged;
         _tooltipTimer = new System.Threading.Timer(_ => RefreshTooltip(), null, 0, Timeout.Infinite);
         _audio.Changed += OnAudioChanged;
     }
@@ -55,7 +56,10 @@ internal sealed class TrayApp : ApplicationContext
         return SystemIcons.Application;
     }
 
-    private void OnAudioChanged(object? sender, EventArgs e) => _tooltipTimer.Change(300, Timeout.Infinite);
+    private void OnAudioChanged(object? sender, EventArgs e)
+    {
+        try { _tooltipTimer.Change(300, Timeout.Infinite); } catch (ObjectDisposedException) { }
+    }
 
     private void RefreshTooltip()
     {
@@ -71,17 +75,40 @@ internal sealed class TrayApp : ApplicationContext
         catch { /* audio not ready; keep the old tooltip */ }
     }
 
+    // Event handlers below run on request threads: an exception would surface as an HTTP 500
+    // (or, during shutdown, from a disposed control), so they swallow and move on.
     private void OnCodeIssued(PendingPairing p)
     {
         // ShowBalloonTip does not take focus, unlike a window.
-        var msg = T($"Código para {p.DeviceName}: {PairingService.Format(p.Code)}", $"Code for {p.DeviceName}: {PairingService.Format(p.Code)}");
-        _ui.BeginInvoke(() => _icon.ShowBalloonTip(15000, "Audio PC", msg, ToolTipIcon.Info));
+        var name = TextSafety.Clean(p.DeviceName);
+        var msg = T($"Código para {name}: {PairingService.Format(p.Code)}", $"Code for {name}: {PairingService.Format(p.Code)}");
+        Balloon(msg, ToolTipIcon.Info);
+    }
+
+    private void OnPairingLockChanged(object? sender, EventArgs e)
+    {
+        if (!_pairing.IsLocked) return; // one balloon when it locks, none when the user unlocks
+        Balloon(T("Emparejamiento bloqueado: demasiados códigos incorrectos. Para volver a permitirlo, usa el menú de Audio PC.",
+                  "Pairing blocked: too many wrong codes. To allow it again, use the Audio PC menu."), ToolTipIcon.Warning);
+    }
+
+    private void Balloon(string msg, ToolTipIcon icon)
+    {
+        try { _ui.BeginInvoke(() => _icon.ShowBalloonTip(15000, "Audio PC", msg, icon)); }
+        catch (Exception) { /* handle gone (exiting) */ }
     }
 
     private void BuildMenu(ContextMenuStrip menu)
     {
         menu.Items.Clear();
         menu.Items.Add(T("Abrir panel", "Open panel"), null, (_, _) => OpenPanel());
+
+        if (_pairing.IsLocked)
+        {
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(new ToolStripMenuItem(T("Emparejamiento bloqueado (códigos incorrectos)", "Pairing blocked (wrong codes)")) { Enabled = false });
+            menu.Items.Add(T("Permitir emparejar de nuevo", "Allow pairing again"), null, (_, _) => _pairing.Unlock());
+        }
 
         var pending = _pairing.Pending();
         if (pending.Count > 0)
@@ -90,8 +117,9 @@ internal sealed class TrayApp : ApplicationContext
             foreach (var p in pending)
             {
                 var secs = Math.Max(0, (int)(p.ExpiresAt - DateTimeOffset.UtcNow).TotalSeconds);
-                menu.Items.Add(new ToolStripMenuItem(T($"Código para {p.DeviceName}: {PairingService.Format(p.Code)} ({secs} s)",
-                    $"Code for {p.DeviceName}: {PairingService.Format(p.Code)} ({secs} s)")) { Enabled = false });
+                var name = TextSafety.Clean(p.DeviceName);
+                menu.Items.Add(new ToolStripMenuItem(T($"Código para {name}: {PairingService.Format(p.Code)} ({secs} s)",
+                    $"Code for {name}: {PairingService.Format(p.Code)} ({secs} s)")) { Enabled = false });
             }
         }
         menu.Items.Add(new ToolStripSeparator());
@@ -101,7 +129,7 @@ internal sealed class TrayApp : ApplicationContext
         if (list.Count == 0) devices.DropDownItems.Add(new ToolStripMenuItem(T("(ninguno)", "(none)")) { Enabled = false });
         foreach (var d in list)
         {
-            var item = new ToolStripMenuItem(d.DeviceName);
+            var item = new ToolStripMenuItem(TextSafety.Clean(d.DeviceName)); // paired.json may predate sanitizing
             var id = d.DeviceId;
             item.DropDownItems.Add(T("Revocar", "Revoke"), null, (_, _) => _paired.Revoke(id));
             devices.DropDownItems.Add(item);
@@ -142,6 +170,7 @@ internal sealed class TrayApp : ApplicationContext
         {
             _audio.Changed -= OnAudioChanged;
             _pairing.CodeIssued -= OnCodeIssued;
+            _pairing.LockChanged -= OnPairingLockChanged;
             _tooltipTimer.Dispose();
             _icon.Visible = false; // otherwise the ghost icon lingers until the mouse passes over it
             _icon.Dispose();

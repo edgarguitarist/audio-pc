@@ -15,7 +15,8 @@ namespace AudioPc.Server;
 // Flags:
 //   --dev            data dir %APPDATA%\AudioPC-dev, port 7800, binds 127.0.0.1 ONLY, UDP discovery and
 //                    mDNS off (non-loopback binds trigger a Windows Firewall prompt), pairing code
-//                    printed to the console and log, separate single-instance mutex.
+//                    printed to the console and log, separate single-instance mutex per port (so two
+//                    dev instances on different ports can run side by side).
 //   --no-tray        no NotifyIcon (headless, for tests/CI); Ctrl+C stops it.
 //   --fake-audio     in-memory FakeAudioService instead of Windows Core Audio.
 //   --data-dir PATH  override the data directory.
@@ -29,7 +30,7 @@ internal static class Program
         var o = RunOptions.Parse(args);
         if (o.NoTray || o.Dev) AttachParentConsole();
 
-        using var mutex = new Mutex(true, o.Dev ? @"Local\AudioPC-Server-dev" : @"Local\AudioPC-Server", out var first);
+        using var mutex = new Mutex(true, o.Dev ? $@"Local\AudioPC-Server-dev-{o.Port ?? 7800}" : @"Local\AudioPC-Server", out var first);
         if (!first) return 0;
 
         Directory.CreateDirectory(o.DataDir);
@@ -61,6 +62,11 @@ internal static class Program
 
         if (o.Dev)
             pairing.CodeIssued += p => log.LogInformation("PAIRING CODE for {Device}: {Code}", p.DeviceName, p.Code);
+        pairing.LockChanged += (_, _) =>
+        {
+            if (pairing.IsLocked) log.LogWarning("pairing LOCKED after too many wrong codes; re-enable it from the tray menu");
+            else log.LogInformation("pairing re-enabled from the tray");
+        };
 
         var port = o.Port ?? (o.Dev ? 7800 : data.Config.Port);
         var app = api.Build(port, loopbackOnly: o.Dev, loggers);
