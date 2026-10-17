@@ -14,6 +14,8 @@
     <Company>edgarguitarist</Company>
     <ApplicationIcon Condition="Exists('Assets\audiopc.ico')">Assets\audiopc.ico</ApplicationIcon>
     <InvariantGlobalization>false</InvariantGlobalization>
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
+    <IsTransformWebConfigDisabled>true</IsTransformWebConfigDisabled>
   </PropertyGroup>
 
   <!-- dotnet publish -c Release -r win-x64 -->
@@ -30,9 +32,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Update="wwwroot\**" CopyToPublishDirectory="PreserveNewest" />
-    <EmbeddedResource Include="wwwroot\**" />
-    <EmbeddedResource Include="Assets\**" />
+    <!-- The panel is embedded; keep it out of the publish folder so AudioPC.exe is the only deliverable. -->
+    <Content Remove="wwwroot\**" />
+    <!-- Logical names keep the folder layout ("wwwroot/js/app.js") regardless of dashes or dots in folder names. -->
+    <EmbeddedResource Include="wwwroot\**" LogicalName="wwwroot/%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Assets\**" LogicalName="Assets/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>
