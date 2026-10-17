@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="back">Atrás</string>
+    <string name="cancel">Cancelar</string>
+    <string name="retry">Reintentar</string>
+    <string name="settings">Ajustes</string>
+    <string name="refresh">Actualizar</string>
+
+    <string name="conn_connected">Conectado</string>
+    <string name="conn_connecting">Conectando…</string>
+    <string name="conn_offline">Sin conexión</string>
+    <string name="conn_unauthorized">Sin emparejar</string>
+
+    <string name="playing_on">Sonando en</string>
+    <string name="no_output">Sin salida seleccionada</string>
+    <string name="mute">Silenciar</string>
+    <string name="unmute">Quitar silencio</string>
+    <string name="volume">Volumen</string>
+    <string name="outputs_title">Salidas</string>
+    <string name="outputs_empty">El PC no informa de salidas de audio.</string>
+    <string name="selected">Seleccionada</string>
+
+    <string name="offline_title">No se alcanza a %1$s</string>
+    <string name="offline_body">Comprueba que el PC esté encendido, que Audio PC esté abierto y que ambos estén en la misma red.</string>
+    <string name="unauth_title">Emparejamiento perdido</string>
+    <string name="unauth_body">%1$s ya no reconoce este teléfono. Empareja de nuevo para seguir controlándolo.</string>
+    <string name="pair_again">Emparejar de nuevo</string>
+
+    <string name="servers_title">Busca tu PC</string>
+    <string name="servers_subtitle">Audio PC busca en tu Wi-Fi los equipos que ejecutan el servidor.</string>
+    <string name="searching">Buscando en la red…</string>
+    <string name="found_title">Encontrados en tu red</string>
+    <string name="none_found_title">No se encontró ningún PC</string>
+    <string name="none_found_body">Comprueba que Audio PC esté abierto en tu computadora y que este teléfono esté en el mismo Wi-Fi, o añade la dirección a mano.</string>
+    <string name="add_manually">Añadir a mano</string>
+    <string name="search_again">Buscar de nuevo</string>
+    <string name="chip_paired">Emparejado</string>
+
+    <string name="manual_title">Añadir un PC por dirección</string>
+    <string name="manual_label">Dirección</string>
+    <string name="manual_hint">192.168.1.20 o 192.168.1.20:7799</string>
+    <string name="manual_error">Ningún servidor de Audio PC respondió en esa dirección.</string>
+    <string name="manual_add">Conectar</string>
+
+    <string name="pair_title">Emparejar con %1$s</string>
+    <string name="pair_subtitle">Escribe el código de 6 dígitos que se muestra en tu PC.</string>
+    <string name="pair_requesting">Pidiendo un código al PC…</string>
+    <string name="pair_confirming">Comprobando el código…</string>
+    <string name="pair_expires_in">El código caduca en %1$s</string>
+    <string name="pair_new_code">Pedir un código nuevo</string>
+    <string name="pair_bad_code">Código incorrecto. Inténtalo de nuevo.</string>
+    <string name="pair_expired">El código caducó.</string>
+    <string name="pair_locked">Demasiados intentos fallidos. Pide un código nuevo.</string>
+    <string name="pair_network">No se pudo contactar con el PC.</string>
+    <string name="pair_other">El PC rechazó la solicitud.</string>
+
+    <string name="settings_servers">PC emparejados</string>
+    <string name="settings_active">Activo</string>
+    <string name="settings_switch">Usar este PC</string>
+    <string name="settings_forget">Olvidar</string>
+    <string name="forget_title">¿Olvidar %1$s?</string>
+    <string name="forget_body">Este teléfono dejará de controlar ese PC hasta que lo emparejes de nuevo.</string>
+    <string name="settings_pair_another">Emparejar otro PC</string>
+    <string name="settings_about">Acerca de</string>
+    <string name="settings_version">Versión %1$s</string>
+    <string name="settings_github">Código fuente en GitHub</string>
+
+    <string name="err_unreachable">No se alcanza al PC.</string>
+    <string name="err_unauthorized">Este teléfono ya no está emparejado.</string>
+    <string name="err_not_found">Esa salida ya no está disponible.</string>
+    <string name="err_generic">Algo salió mal.</string>
+</resources>

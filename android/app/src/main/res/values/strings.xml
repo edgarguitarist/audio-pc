@@ -1,4 +1,74 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name" translatable="false">Audio PC</string>
+
+    <string name="back">Back</string>
+    <string name="cancel">Cancel</string>
+    <string name="retry">Retry</string>
+    <string name="settings">Settings</string>
+    <string name="refresh">Refresh</string>
+
+    <string name="conn_connected">Connected</string>
+    <string name="conn_connecting">Connecting…</string>
+    <string name="conn_offline">Offline</string>
+    <string name="conn_unauthorized">Not paired</string>
+
+    <string name="playing_on">Playing on</string>
+    <string name="no_output">No output selected</string>
+    <string name="mute">Mute</string>
+    <string name="unmute">Unmute</string>
+    <string name="volume">Volume</string>
+    <string name="outputs_title">Outputs</string>
+    <string name="outputs_empty">The PC reports no audio outputs.</string>
+    <string name="selected">Selected</string>
+
+    <string name="offline_title">Can\'t reach %1$s</string>
+    <string name="offline_body">Make sure the PC is on, Audio PC is running and both devices share the same network.</string>
+    <string name="unauth_title">Pairing lost</string>
+    <string name="unauth_body">%1$s no longer recognizes this phone. Pair again to keep controlling it.</string>
+    <string name="pair_again">Pair again</string>
+
+    <string name="servers_title">Find your PC</string>
+    <string name="servers_subtitle">Audio PC looks for computers running the server on your Wi-Fi.</string>
+    <string name="searching">Searching the network…</string>
+    <string name="found_title">Found on your network</string>
+    <string name="none_found_title">No PC found</string>
+    <string name="none_found_body">Check that Audio PC is running on your computer and that this phone is on the same Wi-Fi, or add the address by hand.</string>
+    <string name="add_manually">Add manually</string>
+    <string name="search_again">Search again</string>
+    <string name="chip_paired">Paired</string>
+
+    <string name="manual_title">Add a PC by address</string>
+    <string name="manual_label">Address</string>
+    <string name="manual_hint">192.168.1.20 or 192.168.1.20:7799</string>
+    <string name="manual_error">No Audio PC server answered at that address.</string>
+    <string name="manual_add">Connect</string>
+
+    <string name="pair_title">Pair with %1$s</string>
+    <string name="pair_subtitle">Enter the 6-digit code shown on your PC.</string>
+    <string name="pair_requesting">Asking the PC for a code…</string>
+    <string name="pair_confirming">Checking the code…</string>
+    <string name="pair_expires_in">Code expires in %1$s</string>
+    <string name="pair_new_code">Request a new code</string>
+    <string name="pair_bad_code">Wrong code. Try again.</string>
+    <string name="pair_expired">The code expired.</string>
+    <string name="pair_locked">Too many wrong attempts. Request a new code.</string>
+    <string name="pair_network">Couldn\'t reach the PC.</string>
+    <string name="pair_other">The PC refused the request.</string>
+
+    <string name="settings_servers">Paired PCs</string>
+    <string name="settings_active">Active</string>
+    <string name="settings_switch">Use this PC</string>
+    <string name="settings_forget">Forget</string>
+    <string name="forget_title">Forget %1$s?</string>
+    <string name="forget_body">This phone will stop controlling that PC until you pair again.</string>
+    <string name="settings_pair_another">Pair another PC</string>
+    <string name="settings_about">About</string>
+    <string name="settings_version">Version %1$s</string>
+    <string name="settings_github">Source code on GitHub</string>
+
+    <string name="err_unreachable">Can\'t reach the PC.</string>
+    <string name="err_unauthorized">This phone is no longer paired.</string>
+    <string name="err_not_found">That output is no longer available.</string>
+    <string name="err_generic">Something went wrong.</string>
 </resources>

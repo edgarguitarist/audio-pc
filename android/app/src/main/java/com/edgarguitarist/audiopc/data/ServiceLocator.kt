@@ -4,12 +4,13 @@ import android.content.Context
 
 /** Punto de acceso único a la capa de datos (app, widgets y mosaicos). */
 object ServiceLocator {
-    @Volatile private var repo: AudioPcRepository? = null
+    @Volatile private var repo: AudioPcRepositoryImpl? = null
 
-    fun repository(context: Context): AudioPcRepository =
+    fun repository(context: Context): AudioPcRepository = app(context)
+
+    /** Same instance with the extras only the app UI needs (servers, pairing, discovery). */
+    fun app(context: Context): AudioPcRepositoryImpl =
         repo ?: synchronized(this) { repo ?: create(context.applicationContext).also { repo = it } }
 
-    // Lo implementa la capa de datos (agente de la app).
-    private fun create(appContext: Context): AudioPcRepository =
-        TODO("Implementar en la capa de datos")
+    private fun create(appContext: Context) = AudioPcRepositoryImpl(appContext)
 }
