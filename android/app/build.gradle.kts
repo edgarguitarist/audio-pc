@@ -19,13 +19,30 @@ android {
         (project.findProperty("idSufijo") as String?)?.let { applicationIdSuffix = it }
     }
 
+    // Firma de release opcional: si hay llave configurada (propiedades Gradle o variables de entorno
+    // ANDROID_KEYSTORE_FILE / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD) se usa;
+    // si no, el release se firma con la llave de debug.
+    fun firma(nombre: String): String? =
+        (project.findProperty(nombre) as String?) ?: System.getenv(nombre)
+    val keystoreFile = firma("ANDROID_KEYSTORE_FILE")?.takeIf { it.isNotBlank() }?.let { file(it) }
+    val tieneLlaveRelease = keystoreFile != null && keystoreFile.exists() &&
+        !firma("ANDROID_KEYSTORE_PASSWORD").isNullOrBlank() && !firma("ANDROID_KEY_ALIAS").isNullOrBlank()
+    if (tieneLlaveRelease) {
+        signingConfigs.create("release") {
+            storeFile = keystoreFile
+            storePassword = firma("ANDROID_KEYSTORE_PASSWORD")
+            keyAlias = firma("ANDROID_KEY_ALIAS")
+            keyPassword = firma("ANDROID_KEY_PASSWORD") ?: firma("ANDROID_KEYSTORE_PASSWORD")
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Sin llave propia configurada, se firma con la de debug (CI la reemplaza con secretos).
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (tieneLlaveRelease) "release" else "debug")
         }
     }
 

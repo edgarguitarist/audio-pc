@@ -1,0 +1,36 @@
+name: Server
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "server/**"
+      - ".github/workflows/server.yml"
+  pull_request:
+    paths:
+      - "server/**"
+      - ".github/workflows/server.yml"
+  # Tags v* are handled by release.yml, which calls this workflow.
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        run: dotnet build server/AudioPC.slnx -c Release
+
+      - name: Publish single-file exe
+        run: dotnet publish server/AudioPc.Server -c Release -r win-x64 -o out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AudioPC.exe
+          path: out/AudioPC.exe
+          if-no-files-found: error
