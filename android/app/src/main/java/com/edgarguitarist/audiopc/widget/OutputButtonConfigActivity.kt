@@ -87,7 +87,7 @@ class OutputButtonConfigActivity : ComponentActivity() {
                 it[ButtonPrefs.Kind] = output.kind
                 if (output.image != null) it[ButtonPrefs.Image] = output.image else it.remove(ButtonPrefs.Image)
             }
-            OutputButtonWidget().update(ctx, glanceId)
+            Widgets.updateAll(ctx) // bumps Widgets.version so a live session reloads its prefs
             WidgetRefreshWorker.sync(ctx)
             setResult(Activity.RESULT_OK, Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId))
             finish()

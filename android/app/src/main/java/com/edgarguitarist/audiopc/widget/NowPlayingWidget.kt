@@ -3,6 +3,9 @@ package com.edgarguitarist.audiopc.widget
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -69,26 +72,38 @@ class NowPlayingWidget : GlanceAppWidget() {
     )
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val v0 = Widgets.version.value
+        val initial = load(context)
+        provideContent {
+            val version by Widgets.version.collectAsState()
+            val model by produceState(initial, version) { if (version != v0) value = load(context) }
+            Content(model)
+        }
+    }
+
+    private suspend fun load(context: Context): Model {
         val snap = WidgetData.snapshot(context)
         val photos = snap.state?.let { WidgetData.photos(context, it.outputs.filter { o -> !o.hidden || o.id == it.currentId }) }
             ?: emptyMap()
-        val model = Model(snap, photos)
-        provideContent { Content(model) }
+        return Model(snap, photos)
     }
 
     @Composable
     private fun Content(m: Model) {
         val size = LocalSize.current
         val state = m.snap.state
+        val compact = size.width < 190.dp || size.height < 90.dp
         Box(
             modifier = GlanceModifier.fillMaxSize()
                 .background(ImageProvider(R.drawable.widget_card_bg))
-                .padding(8.dp),
+                // Launchers on Android < 12 add ~8dp of their own padding: a 1-row cell leaves
+                // ~40dp, so the compact layout can't afford 8dp more above and below.
+                .padding(horizontal = 8.dp, vertical = if (compact) 2.dp else 8.dp),
             contentAlignment = Alignment.Center,
         ) {
             when {
                 state == null -> NotPaired()
-                size.width < 190.dp || size.height < 90.dp -> Compact(m, state)
+                compact -> Compact(m, state)
                 else -> Full(m, state, big = size.height >= 150.dp)
             }
         }

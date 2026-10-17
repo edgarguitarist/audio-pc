@@ -1,6 +1,8 @@
 package com.edgarguitarist.audiopc.data
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json as KJson
 import okhttp3.Call
 import okhttp3.Callback
@@ -51,7 +53,12 @@ sealed interface Raw {
 
 private val JSON_TYPE = "application/json; charset=utf-8".toMediaType()
 
+// The body is read after await() resumes, so pin the whole exchange to IO: callers run on
+// Main (view models, widgets) and reading on Main throws NetworkOnMainThreadException.
 suspend fun OkHttpClient.exchange(baseUrl: String, token: String?, method: String, path: String, body: String?): Raw =
+    withContext(Dispatchers.IO) { exchangeBlocking(baseUrl, token, method, path, body) }
+
+private suspend fun OkHttpClient.exchangeBlocking(baseUrl: String, token: String?, method: String, path: String, body: String?): Raw =
     try {
         val req = Request.Builder().url(baseUrl + path).apply {
             if (token != null) header("Authorization", "Bearer $token")

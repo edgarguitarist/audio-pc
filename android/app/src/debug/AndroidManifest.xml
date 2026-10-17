@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: a tiny widget host to try the widgets where the launcher has none
+     (emulators like BlueStacks). How to use it: see the KDoc of WidgetLabActivity. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name=".debug.WidgetLabActivity"
+            android:exported="true"
+            android:label="Widget lab"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+    </application>
+</manifest>

@@ -10,6 +10,9 @@ import com.edgarguitarist.audiopc.tile.NextOutputTileService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -20,6 +23,14 @@ object Widgets {
     /** Outlives any caller (receivers, tiles, view models), so an update is never cancelled midway. */
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    private val _version = MutableStateFlow(0)
+
+    /**
+     * Bumped on every update. While a Glance session is alive, updateAll() only recomposes and
+     * does not re-run provideGlance, so the widgets reload their data when this changes.
+     */
+    internal val version: StateFlow<Int> = _version.asStateFlow()
+
     fun update(context: Context) {
         val app = context.applicationContext
         scope.launch { updateAll(app) }
@@ -28,6 +39,7 @@ object Widgets {
     /** Suspending variant for callers that must wait (action callbacks, the refresh worker). */
     suspend fun updateAll(context: Context) {
         val app = context.applicationContext
+        _version.value++
         // One failing widget must not stop the other from updating.
         runCatching { NowPlayingWidget().updateAll(app) }
         runCatching { OutputButtonWidget().updateAll(app) }

@@ -1,6 +1,9 @@
 package com.edgarguitarist.audiopc.widget
 
 import android.content.Context
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.datastore.preferences.core.Preferences
@@ -9,6 +12,7 @@ import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.Image
 import androidx.glance.ImageProvider
+import androidx.glance.action.Action
 import androidx.glance.action.actionParametersOf
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -24,14 +28,24 @@ import androidx.glance.layout.Box
 import androidx.glance.layout.Column
 import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
+import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.size
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
+import androidx.glance.text.TextAlign
 import androidx.glance.text.TextStyle
 import com.edgarguitarist.audiopc.MainActivity
 import com.edgarguitarist.audiopc.R
+
+private data class ButtonModel(
+    val name: String,
+    val art: android.graphics.Bitmap,
+    val action: Action,
+    val dimmed: Boolean,
+    val current: Boolean,
+)
 
 /** The output a button widget instance is bound to, stored in its Glance (DataStore) state. */
 internal object ButtonPrefs {
@@ -44,7 +58,7 @@ internal object ButtonPrefs {
 class OutputButtonWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Single
 
-    override suspend fun provideGlance(context: Context, id: GlanceId) {
+    private suspend fun load(context: Context, id: GlanceId): ButtonModel {
         val prefs = getAppWidgetState<Preferences>(context, id)
         val outputId = prefs[ButtonPrefs.Id]
         val storedName = prefs[ButtonPrefs.Name]
@@ -58,7 +72,7 @@ class OutputButtonWidget : GlanceAppWidget() {
         val current = live != null && snap.state?.currentId == live.id
         // Dim when the device is not connected (missing from the list) or the PC is unreachable.
         val dimmed = live == null || snap.offline
-        val px = (40 * context.resources.displayMetrics.density).toInt().coerceAtLeast(64)
+        val px = (34 * context.resources.displayMetrics.density).toInt().coerceAtLeast(64)
         val art = TileArt.render(context, photo, kind, px, highlighted = current && !snap.offline, dimmed = dimmed)
 
         val action = when {
@@ -66,22 +80,34 @@ class OutputButtonWidget : GlanceAppWidget() {
             live == null -> actionRunCallback<RetryAction>() // not connected: refresh instead of a doomed switch
             else -> actionRunCallback<SetOutputAction>(actionParametersOf(OutputIdKey to outputId))
         }
+        return ButtonModel(name, art, action, dimmed, current)
+    }
 
+    override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val v0 = Widgets.version.value
+        val initial = load(context, id)
         provideContent {
+            // Reload on every Widgets.update: also picks up the output chosen in the config screen.
+            val version by Widgets.version.collectAsState()
+            val m by produceState(initial, version) { if (version != v0) value = load(context, id) }
+            val (name, art, action, dimmed, current) = m
             Box(
                 modifier = GlanceModifier.fillMaxSize()
                     .background(ImageProvider(R.drawable.widget_card_bg))
-                    .padding(4.dp)
+                    .padding(2.dp)
                     .clickable(action),
                 contentAlignment = Alignment.Center,
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Image(ImageProvider(art), contentDescription = name, modifier = GlanceModifier.size(40.dp))
-                    Spacer(GlanceModifier.height(2.dp))
+                Column(modifier = GlanceModifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Image(ImageProvider(art), contentDescription = name, modifier = GlanceModifier.size(34.dp)) // fits a 1x1 cell minus launcher padding
+                    Spacer(GlanceModifier.height(1.dp))
                     Text(
                         text = name,
                         maxLines = 1,
+                        // Without a bounded width a long name overflows both edges instead of ellipsizing.
+                        modifier = GlanceModifier.fillMaxWidth(),
                         style = TextStyle(
+                            textAlign = TextAlign.Center,
                             color = when {
                                 dimmed -> WColors.muted
                                 current -> WColors.accent
