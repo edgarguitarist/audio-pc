@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_now_playing_label">Audio PC</string>
+    <string name="widget_now_playing_desc">Salida actual del PC con volumen, silencio y cambio rápido de salida.</string>
+    <string name="widget_output_button_label">Salida de audio</string>
+    <string name="widget_output_button_desc">Botón de un toque para pasar el PC a una salida elegida.</string>
+    <string name="tile_mute_label">Silenciar PC</string>
+    <string name="tile_next_output_label">Siguiente salida</string>
+
+    <string name="widget_muted">Silenciado</string>
+    <string name="widget_volume">%1$d%%</string>
+    <string name="widget_volume_detail">%1$d%% · %2$s</string>
+    <string name="widget_muted_detail">Silenciado · %1$s</string>
+    <string name="widget_offline">Sin conexión · toca para reintentar</string>
+    <string name="widget_unauthorized">Emparejamiento perdido · abre la app</string>
+    <string name="widget_not_paired">Abre Audio PC para emparejar con tu PC</string>
+    <string name="widget_no_output">Sin salida</string>
+    <string name="widget_cd_volume_down">Bajar volumen</string>
+    <string name="widget_cd_volume_up">Subir volumen</string>
+    <string name="widget_cd_mute">Silenciar</string>
+    <string name="widget_cd_unmute">Quitar silencio</string>
+
+    <string name="config_title">Elige una salida</string>
+    <string name="config_loading">Cargando salidas…</string>
+    <string name="config_empty">No hay salidas disponibles</string>
+    <string name="config_not_paired">Todavía no hay un PC emparejado. Abre Audio PC para emparejar primero.</string>
+    <string name="config_open_app">Abrir Audio PC</string>
+    <string name="config_retry">Reintentar</string>
+    <string name="config_current">En uso</string>
+
+    <string name="tile_pc_name">PC: %1$s</string>
+    <string name="tile_app_name">Audio PC</string>
+    <string name="tile_offline">Sin conexión</string>
+    <string name="tile_not_paired">Sin emparejar</string>
+    <string name="tile_next_subtitle">Siguiente: %1$s</string>
+</resources>
