@@ -6,7 +6,7 @@ Control your Windows PC's audio from your phone over the local network. Switch t
 output device (TV, headphones, speakers...), change the volume and mute, all from an Android
 app, home-screen widgets, Quick Settings tiles or a web panel that works in any browser
 (iPhone included). The PC runs a single portable `AudioPC.exe` with a tray icon; the app finds
-it by itself and pairs with a 6-digit code.
+it by itself and pairs with one tap; a 6-digit code can be switched on as a second factor.
 
 ## Features
 
@@ -14,7 +14,9 @@ it by itself and pairs with a 6-digit code.
 - Device names and photos you configure yourself (`devices.json`), with automatic names for the rest.
 - Automatic discovery on the LAN (mDNS, UDP broadcast, subnet sweep). The phone remembers the PC
   by its id, so IP changes don't matter.
-- Pairing with a 6-digit code shown on the PC; per-device tokens, revocable from the tray.
+- Pairing without typing anything: finding the PC is enough, and the PC shows a notification for
+  each new device. Optional 6-digit code (tray: **Require a code to pair**); per-device tokens,
+  revocable from the tray.
 - Live updates over WebSocket (changes made in Windows show up on the phone).
 - Android home-screen widgets and Quick Settings tiles.
 - Web panel for any browser, served by the PC itself.
@@ -39,7 +41,7 @@ it by itself and pairs with a 6-digit code.
 2. On first run, Windows Firewall asks for access: allow **Private networks**.
 3. Install the APK from the same release on your phone.
 4. Open the app. It finds the PC automatically.
-5. Type the 6-digit code shown on the PC.
+5. Tap it. That's it (if you turned on **Require a code to pair**, type the code the PC shows).
 
 To use the web panel instead, open `http://<pc-ip>:7799/` in a browser and pair the same way.
 
@@ -107,6 +109,8 @@ rest_command:
 
 - **Start with Windows** toggle.
 - **Paired devices**: list and revoke.
+- **Require a code to pair** (off by default): new devices must type a 6-digit code shown on the
+  PC. Turn it on if you don't trust everyone on your network.
 - **Open data folder** (`%APPDATA%\AudioPC`).
 
 ## Troubleshooting

@@ -320,10 +320,25 @@ class AudioPcRepositoryImpl(context: Context) : AudioPcRepository {
         return if (found != null) Result.success(found) else Result.failure(java.io.IOException("not an Audio PC server"))
     }
 
-    suspend fun pairRequest(host: String, port: Int): Result<PairRequestResponse> {
+    /**
+     * Asks to pair. The response decides the flow (API.md section 2): a token means the PC pairs
+     * without a code and the server is saved right away; a requestId means the code screen.
+     */
+    suspend fun pairRequest(host: String, port: Int): Result<PairStart> {
         val body = Json.encodeToString(PairRequestBody(deviceName(), deviceId))
         return http.exchange("http://$host:$port", null, "POST", "/api/pair/request", body).toResult()
-            .mapCatching { Json.decodeFromString<PairRequestResponse>(it) }
+            .mapCatching { text ->
+                Json.decodeFromString<PairRequestResponse>(text).also { r ->
+                    if ((r.token == null || r.serverId == null) && r.requestId == null) throw java.io.IOException("unexpected pairing response")
+                }
+            }
+            // Plain map (not mapCatching) around the suspending save, so a cancellation propagates
+            // instead of being reported as a pairing failure.
+            .map { r ->
+                if (r.token != null && r.serverId != null) {
+                    PairStart.Paired(savePaired(host, port, PairConfirmResponse(r.token, r.serverId, r.serverName ?: host)))
+                } else PairStart.NeedsCode(r.requestId!!, r.expiresIn)
+            }
     }
 
     /** On success the server is saved (replacing the old entry/token) and becomes the active one. */
@@ -331,16 +346,18 @@ class AudioPcRepositoryImpl(context: Context) : AudioPcRepository {
         val body = Json.encodeToString(PairConfirmBody(requestId, code))
         return http.exchange("http://$host:$port", null, "POST", "/api/pair/confirm", body).toResult()
             .mapCatching { Json.decodeFromString<PairConfirmResponse>(it) }
-            .map { r ->
-                val saved = SavedServer(r.serverId, r.serverName, host, port, r.token)
-                mutateLock.withLock {
-                    val list = _servers.value.filter { it.id != saved.id } + saved
-                    _servers.value = list
-                    store.saveServers(list, saved.id)
-                }
-                activate(saved)
-                saved
-            }
+            .map { r -> savePaired(host, port, r) }
+    }
+
+    private suspend fun savePaired(host: String, port: Int, r: PairConfirmResponse): SavedServer {
+        val saved = SavedServer(r.serverId, r.serverName, host, port, r.token)
+        mutateLock.withLock {
+            val list = _servers.value.filter { it.id != saved.id } + saved
+            _servers.value = list
+            store.saveServers(list, saved.id)
+        }
+        activate(saved)
+        return saved
     }
 
     /** A fresh discovery saw a saved server at a new address. */

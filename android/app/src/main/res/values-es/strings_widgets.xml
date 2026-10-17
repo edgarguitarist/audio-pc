@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="widget_now_playing_label">Audio PC</string>
-    <string name="widget_now_playing_desc">Salida actual del PC con volumen, silencio y cambio rápido de salida.</string>
+    <string name="widget_now_playing_desc">Salida actual de la PC con volumen, silencio y cambio rápido de salida.</string>
     <string name="widget_output_button_label">Salida de audio</string>
-    <string name="widget_output_button_desc">Botón de un toque para pasar el PC a una salida elegida.</string>
+    <string name="widget_output_button_desc">Botón de un toque para pasar la PC a una salida elegida.</string>
     <string name="tile_mute_label">Silenciar PC</string>
     <string name="tile_next_output_label">Siguiente salida</string>
 
@@ -23,7 +23,7 @@
     <string name="config_title">Elige una salida</string>
     <string name="config_loading">Cargando salidas…</string>
     <string name="config_empty">No hay salidas disponibles</string>
-    <string name="config_not_paired">Todavía no hay un PC emparejado. Abre Audio PC para emparejar primero.</string>
+    <string name="config_not_paired">Todavía no hay una PC emparejada. Abre Audio PC para emparejar primero.</string>
     <string name="config_open_app">Abrir Audio PC</string>
     <string name="config_retry">Reintentar</string>
     <string name="config_current">En uso</string>

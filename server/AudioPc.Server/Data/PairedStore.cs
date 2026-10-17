@@ -50,12 +50,18 @@ public sealed class PairedStore
     public IReadOnlyList<PairedDevice> List() { lock (_gate) return _devices.ToList(); }
 
     /// <summary>Creates a new token for the device (replacing any previous one) and returns it.</summary>
-    public string Issue(string deviceId, string deviceName)
+    public string Issue(string deviceId, string deviceName) => TryIssue(deviceId, deviceName, int.MaxValue)!;
+
+    /// <summary>Like <see cref="Issue"/>, but returns null (and changes nothing) when the store
+    /// already holds <paramref name="maxDevices"/> devices and this deviceId is not one of them.
+    /// Checked under the same lock as the insert, so concurrent requests cannot overshoot.</summary>
+    public string? TryIssue(string deviceId, string deviceName, int maxDevices)
     {
         var token = Base64Url(RandomNumberGenerator.GetBytes(32));
         var now = DateTimeOffset.UtcNow;
         lock (_gate)
         {
+            if (_devices.Count >= maxDevices && !_devices.Exists(d => d.DeviceId == deviceId)) return null;
             _devices.RemoveAll(d => d.DeviceId == deviceId);
             _devices.Add(new PairedDevice { DeviceId = deviceId, DeviceName = deviceName, TokenHash = HashToken(token), CreatedAt = now, LastSeen = now });
             Save();

@@ -365,6 +365,7 @@
   @keyframes shake { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
   .pair-msg { min-height: 22px; font-size: 14px; color: var(--muted); }
   .pair-msg.err { color: var(--danger); font-weight: 600; }
+  .pair .pair-hint { margin-top: 4px; font-size: 13px; line-height: 1.4; }
   .btn {
     min-height: 44px; margin-top: 12px; padding: 0 20px; border-radius: 12px; border: 0;
     background: var(--text); color: var(--bg); font-weight: 650; cursor: pointer; touch-action: manipulation;
@@ -416,11 +417,12 @@
   <!-- Emparejamiento -->
   <section id="pair-view" hidden>
     <div class="pair">
-      <h2 data-t="pairTitle"></h2>
+      <h2 id="pair-title"></h2>
       <p id="pair-sub"></p>
-      <input class="code-input" id="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" placeholder="······" data-label="codeLabel" enterkeyhint="done">
+      <input class="code-input" id="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" placeholder="······" data-label="codeLabel" enterkeyhint="done" hidden>
       <div class="pair-msg" id="pair-msg" role="status"></div>
-      <button class="btn ghost" id="pair-new" type="button" data-t="pairNew"></button>
+      <p class="pair-hint" id="pair-hint" data-t="pairHint" hidden></p>
+      <button class="btn ghost" id="pair-new" type="button" hidden></button>
     </div>
   </section>
 
@@ -478,7 +480,9 @@ const T = {
     connecting: 'Conectando…', online: 'PC conectada', reconnecting: 'Reconectando…', offline: 'Sin conexión',
     pairing: 'Sin emparejar', install: 'Instalar', refresh: 'Actualizar',
     pairTitle: 'Escribe el código que aparece en la PC',
-    pairSub: (s) => s ? 'El código vence en ' + s + ' s.' : 'Pidiendo un código a la PC…',
+    pairConnecting: 'Conectando con la PC…', pairIdle: 'Este navegador no está emparejado', pairStart: 'Emparejar',
+    pairHint: 'El código aparece en la notificación de la PC o con clic derecho en el ícono de Audio PC junto al reloj.',
+    pairSub: (s) => 'El código vence en ' + s + ' s.',
     pairExpired: 'El código venció.', pairNew: 'Pedir otro código', codeLabel: 'Código de 6 dígitos',
     pairBad: 'Código incorrecto. Inténtalo de nuevo.', pairExpiredMsg: 'El código venció. Pide otro.',
     pairLocked: 'Demasiados intentos. Te pedimos un código nuevo.', pairFail: 'No se pudo hablar con la PC.',
@@ -499,7 +503,9 @@ const T = {
     connecting: 'Connecting…', online: 'PC connected', reconnecting: 'Reconnecting…', offline: 'No connection',
     pairing: 'Not paired', install: 'Install', refresh: 'Refresh',
     pairTitle: 'Enter the code shown on the PC',
-    pairSub: (s) => s ? 'The code expires in ' + s + ' s.' : 'Asking the PC for a code…',
+    pairConnecting: 'Connecting to the PC…', pairIdle: 'This browser is not paired', pairStart: 'Pair',
+    pairHint: 'The code shows in the PC notification, or right-click the Audio PC icon next to the clock.',
+    pairSub: (s) => 'The code expires in ' + s + ' s.',
     pairExpired: 'The code expired.', pairNew: 'Request a new code', codeLabel: '6-digit code',
     pairBad: 'Wrong code. Try again.', pairExpiredMsg: 'The code expired. Request a new one.',
     pairLocked: 'Too many attempts. Requesting a new code.', pairFail: 'Could not reach the PC.',
@@ -609,13 +615,38 @@ const pairing = { requestId: null, timer: null, left: 0, busy: false, gen: 0 };
 
 function pairMsg(text, err) { $('pair-msg').textContent = text || ''; $('pair-msg').classList.toggle('err', !!err); }
 
-function showPairing() {
+// The code UI only appears when the PC asks for a code: with open pairing (the default) the
+// request itself returns the token, so "enter the code" must not flash first.
+// mode: 'requesting' | 'code' | 'idle' (explicitly unpaired) | 'error'
+function pairMode(mode) {
+  const code = mode === 'code';
+  $('code').hidden = !code; $('pair-hint').hidden = !code;
+  $('pair-title').textContent = code ? L.pairTitle : mode === 'idle' ? L.pairIdle : L.pairConnecting;
+  $('pair-new').textContent = code ? L.pairNew : mode === 'idle' ? L.pairStart : L.retry;
+  $('pair-new').hidden = mode === 'requesting';
+}
+
+// auto=false after "Unpair this browser": with open pairing an automatic request would pair
+// the browser again at once, so wait for the user to ask.
+function showPairing(auto = true) {
   stopLive();
   $('main-view').hidden = true; $('pair-view').hidden = false;
   $('refresh').hidden = true; $('unpair').hidden = true; $('updated').textContent = '';
   $('install').classList.remove('show');
   setStatus('', 'pairing');
-  requestCode();
+  if (auto) requestCode();
+  else {
+    pairing.gen++; clearInterval(pairing.timer); pairing.requestId = null;
+    $('pair-sub').textContent = ''; pairMsg('');
+    pairMode('idle');
+  }
+}
+
+function finishPairing(r) {
+  clearInterval(pairing.timer); pairing.gen++; pairing.requestId = null;
+  auth = { token: r.token, serverId: r.serverId };
+  store.set('audiopc.auth', JSON.stringify(auth));
+  startMain();
 }
 
 async function requestCode() {
@@ -623,11 +654,15 @@ async function requestCode() {
   clearInterval(pairing.timer);
   pairing.requestId = null; pairing.left = 0;
   $('code').value = ''; $('code').disabled = true; $('code').classList.remove('bad');
-  $('pair-sub').textContent = L.pairSub(0);
+  $('pair-sub').textContent = '';
+  pairMode('requesting');
   pairMsg('');
   try {
     const r = await http('/api/pair/request', { method: 'POST', body: JSON.stringify({ deviceName: deviceName(), deviceId }) }, false);
     if (gen !== pairing.gen) return;
+    // Open pairing: the response already carries the token (same shape as /api/pair/confirm).
+    if (r.token) { finishPairing(r); return; }
+    pairMode('code');
     pairing.requestId = r.requestId;
     pairing.left = Number(r.expiresIn) || 120;
     $('code').disabled = false;
@@ -646,6 +681,7 @@ async function requestCode() {
   } catch (e) {
     if (gen !== pairing.gen) return;
     $('pair-sub').textContent = '';
+    pairMode('error');
     pairMsg(e.message || L.pairFail, true);
   }
 }
@@ -655,10 +691,7 @@ async function confirmCode(code) {
   pairing.busy = true; $('code').disabled = true;
   try {
     const r = await http('/api/pair/confirm', { method: 'POST', body: JSON.stringify({ requestId: pairing.requestId, code }) }, false);
-    clearInterval(pairing.timer); pairing.gen++;
-    auth = { token: r.token, serverId: r.serverId };
-    store.set('audiopc.auth', JSON.stringify(auth));
-    startMain();
+    finishPairing(r);
   } catch (e) {
     $('code').disabled = false;
     if (e.status === 403) {
@@ -690,12 +723,12 @@ $('code').addEventListener('input', (e) => {
 });
 $('pair-new').addEventListener('click', () => requestCode());
 
-function unpair() {
+function unpair(auto = true) {
   auth = null; store.del('audiopc.auth');
   state = null; outputs = [];
-  showPairing();
+  showPairing(auto);
 }
-$('unpair').addEventListener('click', unpair);
+$('unpair').addEventListener('click', () => unpair(false));
 
 // ---- Estado ----
 let state = null;     // último estado recibido

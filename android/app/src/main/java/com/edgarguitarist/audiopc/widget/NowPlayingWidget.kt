@@ -1,5 +1,6 @@
 package com.edgarguitarist.audiopc.widget
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.runtime.Composable
@@ -76,6 +77,9 @@ class NowPlayingWidget : GlanceAppWidget() {
         val initial = load(context)
         provideContent {
             val version by Widgets.version.collectAsState()
+            // The producer does assign value; lint's ProduceStateDoesNotAssignValue misses the assignment here
+            // (it still fires with an unconditional one), so it is suppressed for this declaration only.
+            @SuppressLint("ProduceStateDoesNotAssignValue")
             val model by produceState(initial, version) { if (version != v0) value = load(context) }
             Content(model)
         }

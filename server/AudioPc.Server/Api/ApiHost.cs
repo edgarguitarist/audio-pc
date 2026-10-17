@@ -37,7 +37,12 @@ public sealed class ApiHost
     public static string AppVersion => Version;
     public string ServerName => string.IsNullOrWhiteSpace(_data.Config.Name) ? Environment.MachineName : _data.Config.Name!;
 
-    public object Info() => new { service = "audio-pc", apiVersion = 1, id = _data.Config.ServerId, name = ServerName, version = Version };
+    public object Info() => new
+    {
+        service = "audio-pc", apiVersion = 1, id = _data.Config.ServerId, name = ServerName, version = Version,
+        // A UI hint only: the /api/pair/request response is what clients act on.
+        pairing = _data.Config.RequirePairingCode ? "code" : "open",
+    };
 
     public WebApplication Build(int port, bool loopbackOnly, ILoggerFactory loggers)
     {
@@ -237,6 +242,25 @@ public sealed class ApiHost
             if (deviceId.Length == 0 || deviceName.Length == 0 || deviceId.Length > 128 || deviceName.Length > 64)
                 return Err(400, "bad_request", "deviceName (max 64) and deviceId (max 128) are required.");
             var ip = RemoteIp(ctx);
+            if (!_data.Config.RequirePairingCode)
+            {
+                // Open pairing: finding the server is enough. Same response shape as /api/pair/confirm.
+                switch (_pairing.RequestOpen(ip, deviceId, deviceName, out var token))
+                {
+                    case RequestStatus.Ok:
+                        _log.LogInformation("paired {Device} ({Ip}) without a code (open pairing)", deviceName, ip);
+                        return Results.Json(new { token, serverId = _data.Config.ServerId, serverName = ServerName });
+                    case RequestStatus.TooManyDevices:
+                        _log.LogWarning("open pairing refused for {Device} ({Ip}): {Max} devices already paired", deviceName, ip, PairingService.MaxPairedDevices);
+                        return Err(429, "rate_limited", $"This PC already has {PairingService.MaxPairedDevices} paired devices. Revoke some from the Audio PC tray menu (Paired devices) and try again.");
+                    case RequestStatus.GlobalRateLimited:
+                        return Err(429, "rate_limited", "Too many devices are pairing right now; try again in a minute.");
+                    case RequestStatus.TooManyClients:
+                        return Err(429, "rate_limited", "Too many clients are pairing; try again in a minute.");
+                    default:
+                        return Err(429, "rate_limited", "Too many pairing requests; try again in a minute.");
+                }
+            }
             switch (_pairing.Request(ip, deviceId, deviceName, out var pending))
             {
                 case RequestStatus.Ok:

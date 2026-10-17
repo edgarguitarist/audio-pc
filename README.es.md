@@ -6,7 +6,8 @@ Controla el audio de tu PC con Windows desde el celular, por la red local. Cambi
 de salida predeterminado (TV, audífonos, parlantes...), el volumen y el silencio desde una app
 Android, widgets en la pantalla de inicio, mosaicos de Ajustes rápidos o un panel web que funciona
 en cualquier navegador (también en iPhone). El PC ejecuta un único `AudioPC.exe` portátil con
-ícono en la bandeja; la app lo encuentra sola y se vincula con un código de 6 dígitos.
+ícono en la bandeja; la app lo encuentra sola y se vincula con un toque; un código de 6 dígitos
+se puede activar como segundo factor.
 
 ## Características
 
@@ -14,7 +15,9 @@ en cualquier navegador (también en iPhone). El PC ejecuta un único `AudioPC.ex
 - Nombres y fotos de dispositivos que tú configuras (`devices.json`), con nombres automáticos para el resto.
 - Descubrimiento automático en la red (mDNS, broadcast UDP, barrido de la subred). El celular
   recuerda la PC por su id, así que no importa si cambia la IP.
-- Vinculación con un código de 6 dígitos que se muestra en la PC; tokens por dispositivo, revocables desde la bandeja.
+- Vinculación sin escribir nada: basta con encontrar la PC, que avisa con una notificación por cada
+  dispositivo nuevo. Código de 6 dígitos opcional (bandeja: **Pedir código al emparejar**); tokens por
+  dispositivo, revocables desde la bandeja.
 - Actualizaciones en vivo por WebSocket (los cambios hechos en Windows aparecen en el celular).
 - Widgets de pantalla de inicio y mosaicos de Ajustes rápidos en Android.
 - Panel web para cualquier navegador, servido por el propio PC.
@@ -39,7 +42,7 @@ en cualquier navegador (también en iPhone). El PC ejecuta un único `AudioPC.ex
 2. La primera vez, el Firewall de Windows pide acceso: permite **Redes privadas**.
 3. Instala el APK de la misma release en tu celular.
 4. Abre la app: encuentra la PC automáticamente.
-5. Escribe el código de 6 dígitos que aparece en la PC.
+5. Tócala y listo (si activaste **Pedir código al emparejar**, escribe el código que muestra la PC).
 
 Para usar el panel web, abre `http://<ip-del-pc>:7799/` en un navegador y vincula igual.
 
@@ -107,6 +110,8 @@ rest_command:
 
 - Opción **Iniciar con Windows**.
 - **Dispositivos vinculados**: lista y revocación.
+- **Pedir código al emparejar** (desactivado por defecto): los dispositivos nuevos deben escribir un
+  código de 6 dígitos que muestra la PC. Actívalo si no confías en todos los que usan tu red.
 - **Abrir carpeta de datos** (`%APPDATA%\AudioPC`).
 
 ## Solución de problemas

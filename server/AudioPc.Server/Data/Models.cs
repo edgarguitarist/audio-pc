@@ -12,6 +12,11 @@ public sealed class ServerConfig
     public Dictionary<string, string> Presets { get; set; } = new();
     /// <summary>Extra Host header names accepted besides IPs, localhost and the PC name (DNS-rebinding guard).</summary>
     public List<string>? AllowedHosts { get; set; }
+    /// <summary>
+    /// Off (default): finding the server is enough to pair. On: a 6-digit code shown on the PC
+    /// must be typed on the client — an optional second factor. Toggled from the tray menu.
+    /// </summary>
+    public bool RequirePairingCode { get; set; }
 }
 
 public sealed class PairedDevice

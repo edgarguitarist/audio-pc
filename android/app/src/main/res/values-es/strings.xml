@@ -21,7 +21,7 @@
     <string name="selected">Seleccionada</string>
 
     <string name="offline_title">No se alcanza a %1$s</string>
-    <string name="offline_body">Comprueba que el PC esté encendido, que Audio PC esté abierto y que ambos estén en la misma red.</string>
+    <string name="offline_body">Comprueba que la PC esté encendida, que Audio PC esté abierto y que ambos estén en la misma red.</string>
     <string name="unauth_title">Emparejamiento perdido</string>
     <string name="unauth_body">%1$s ya no reconoce este teléfono. Empareja de nuevo para seguir controlándolo.</string>
     <string name="pair_again">Emparejar de nuevo</string>
@@ -30,13 +30,13 @@
     <string name="servers_subtitle">Audio PC busca en tu Wi-Fi los equipos que ejecutan el servidor.</string>
     <string name="searching">Buscando en la red…</string>
     <string name="found_title">Encontrados en tu red</string>
-    <string name="none_found_title">No se encontró ningún PC</string>
+    <string name="none_found_title">No se encontró ninguna PC</string>
     <string name="none_found_body">Comprueba que Audio PC esté abierto en tu computadora y que este teléfono esté en el mismo Wi-Fi, o añade la dirección a mano.</string>
     <string name="add_manually">Añadir a mano</string>
     <string name="search_again">Buscar de nuevo</string>
     <string name="chip_paired">Emparejado</string>
 
-    <string name="manual_title">Añadir un PC por dirección</string>
+    <string name="manual_title">Añadir una PC por dirección</string>
     <string name="manual_label">Dirección</string>
     <string name="manual_hint">192.168.1.20 o 192.168.1.20:7799</string>
     <string name="manual_error">Ningún servidor de Audio PC respondió en esa dirección.</string>
@@ -44,28 +44,31 @@
 
     <string name="pair_title">Emparejar con %1$s</string>
     <string name="pair_subtitle">Escribe el código de 6 dígitos que se muestra en tu PC.</string>
-    <string name="pair_requesting">Pidiendo un código al PC…</string>
+    <string name="pair_requesting">Conectando con la PC…</string>
     <string name="pair_confirming">Comprobando el código…</string>
     <string name="pair_expires_in">El código caduca en %1$s</string>
     <string name="pair_new_code">Pedir un código nuevo</string>
     <string name="pair_bad_code">Código incorrecto. Inténtalo de nuevo.</string>
     <string name="pair_expired">El código caducó.</string>
     <string name="pair_locked">Demasiados intentos fallidos. Pide un código nuevo.</string>
-    <string name="pair_network">No se pudo contactar con el PC.</string>
+    <string name="pair_network">No se pudo contactar con la PC.</string>
     <string name="pair_other">El PC rechazó la solicitud.</string>
+    <string name="pair_blocked">El emparejamiento está bloqueado en la PC por demasiados códigos incorrectos. En la PC, elige “Permitir emparejar de nuevo” en el menú de Audio PC.</string>
+    <string name="pair_rate_limited">La PC no acepta dispositivos nuevos por ahora. Inténtalo en un minuto o revoca dispositivos viejos desde el menú de Audio PC.</string>
+    <string name="pair_hint">El código aparece en la notificación de la PC o con clic derecho en el ícono de Audio PC junto al reloj.</string>
 
-    <string name="settings_servers">PC emparejados</string>
+    <string name="settings_servers">PC emparejadas</string>
     <string name="settings_active">Activo</string>
     <string name="settings_switch">Usar este PC</string>
     <string name="settings_forget">Olvidar</string>
     <string name="forget_title">¿Olvidar %1$s?</string>
-    <string name="forget_body">Este teléfono dejará de controlar ese PC hasta que lo emparejes de nuevo.</string>
-    <string name="settings_pair_another">Emparejar otro PC</string>
+    <string name="forget_body">Este teléfono dejará de controlar esa PC hasta que la emparejes de nuevo.</string>
+    <string name="settings_pair_another">Emparejar otra PC</string>
     <string name="settings_about">Acerca de</string>
     <string name="settings_version">Versión %1$s</string>
     <string name="settings_github">Código fuente en GitHub</string>
 
-    <string name="err_unreachable">No se alcanza al PC.</string>
+    <string name="err_unreachable">No se alcanza a la PC.</string>
     <string name="err_unauthorized">Este teléfono ya no está emparejado.</string>
     <string name="err_not_found">Esa salida ya no está disponible.</string>
     <string name="err_generic">Algo salió mal.</string>

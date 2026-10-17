@@ -12,6 +12,7 @@ public sealed class DataStore : IDisposable
     private readonly FileSystemWatcher? _watcher;
     private readonly System.Threading.Timer _reloadTimer;
     private volatile DevicesConfig _devices = new();
+    private readonly object _configGate = new();
 
     public string Dir { get; }
     public string ImagesDir { get; }
@@ -97,6 +98,51 @@ public sealed class DataStore : IDisposable
             return cfg;
         }
         return WriteFresh(path);
+    }
+
+    /// <summary>
+    /// Changes <see cref="ServerConfig.RequirePairingCode"/> and persists it. The in-memory value
+    /// changes even if the write fails (the owner's choice applies to this run either way).
+    /// </summary>
+    public void SetRequirePairingCode(bool value)
+    {
+        lock (_configGate)
+        {
+            Config.RequirePairingCode = value;
+            _log.LogInformation("requirePairingCode set to {Value} from the tray", value);
+            PersistField("requirePairingCode", value);
+        }
+    }
+
+    /// <summary>
+    /// Writes one field into config.json, re-reading the file so every other field the user wrote
+    /// (known or not) survives, exactly like the serverId upgrade in <see cref="LoadConfig"/>.
+    /// </summary>
+    private void PersistField(string name, JsonNode? value)
+    {
+        var path = Path.Combine(Dir, "config.json");
+        try
+        {
+            if (!File.Exists(path)) { Json.WriteAtomic(path, Config); return; }
+            JsonObject root;
+            try
+            {
+                root = JsonNode.Parse(File.ReadAllText(path), documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true }) as JsonObject
+                    ?? throw new JsonException("config.json must contain a JSON object");
+            }
+            catch (JsonException ex)
+            {
+                // The user may be mid-edit: never clobber their file; the change stays in memory.
+                _log.LogError("config.json is not valid JSON right now ({Message}); \"{Name}\" applies to this run only", ex.Message, name);
+                return;
+            }
+            root[name] = value;
+            WriteTextAtomic(path, root.ToJsonString(Json.Options));
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "could not save \"{Name}\" to config.json; it applies to this run only", name);
+        }
     }
 
     private ServerConfig WriteFresh(string path)

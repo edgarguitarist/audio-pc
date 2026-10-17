@@ -82,6 +82,7 @@ internal static class Program
         }
         log.LogInformation("Audio PC {Version} listening on {Bind}:{Port}, data dir {Dir}{Fake}", ApiHost.AppVersion,
             o.Dev ? "127.0.0.1" : "0.0.0.0", port, o.DataDir, o.FakeAudio ? " (fake audio)" : "");
+        log.LogInformation("pairing mode: {Mode}", data.Config.RequirePairingCode ? "code required" : "open (no code)");
 
         UdpDiscovery? udp = null;
         DnsSd? dns = null;

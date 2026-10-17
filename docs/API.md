@@ -23,7 +23,7 @@ here is ambiguous, fix this document first, then the code.
 | 415 | `unsupported_media_type` | a `POST /api/*` without `Content-Type: application/json` |
 | 421 | `misdirected_request` | `Host` header that is not a name of this PC (see below) |
 | 423 | `pairing_locked` | too many wrong codes (per request, or the global lock of §2) |
-| 429 | `rate_limited` | a rate or connection limit was hit (§2, §4); retry later |
+| 429 | `rate_limited` | a rate, connection or paired-device limit was hit (§2, §4); retry later |
 | 500 | `audio_error` | Windows audio call failed |
 
 - **Request rules** (they protect the API from web pages open in a browser on the LAN):
@@ -69,11 +69,14 @@ host of the server with the same `serverId`. Users can also add a server by hand
   "apiVersion": 1,
   "id": "6f1c2a3e8b4d4c559a103e2f7d5b1a01",
   "name": "PC-EDGAR",
-  "version": "1.0.0"
+  "version": "1.0.0",
+  "pairing": "open"
 }
 ```
 
-`id` is a random 128-bit hex string generated on first run and persisted.
+`id` is a random 128-bit hex string generated on first run and persisted. `pairing` is `"open"`
+or `"code"` (§2); it is only a hint for the UI — clients must act on the response of
+`POST /api/pair/request`, since the owner can switch the mode at any time. Older servers omit it.
 
 ## 2. Pairing and auth
 
@@ -85,20 +88,49 @@ header without the `Bearer ` scheme is taken as the bare token (`Authorization: 
 **Failed-auth throttling**: after 20 requests answered `401` from the same IP address within a
 minute, that address gets `429 rate_limited` for one minute (even with a valid token).
 
-Pairing (trust on first use, like Bluetooth):
+Pairing has two modes, chosen by the owner on the PC with the tray item **"Require a code to
+pair"** (config `requirePairingCode`, §6). Both start with the same request, and **the response
+tells the client which mode is active**:
 
-1. `POST /api/pair/request` — body `{ "deviceName": "Poco F7", "deviceId": "<client-generated stable id>" }`
-   → `200 { "requestId": "<opaque>", "expiresIn": 120 }`.
+`POST /api/pair/request` — body `{ "deviceName": "Poco F7", "deviceId": "<client-generated stable id>" }`.
+`deviceName` (max 64) and `deviceId` (max 128) are required; control and format characters
+(including bidi overrides) are stripped and the result trimmed before the limits apply, and an
+empty result is `400 bad_request`. The request rules at the top (Content-Type, `Host`) apply.
+
+- Response has `token` → paired (open mode). Response has `requestId` → show the code screen
+  (code mode). Clients must accept both (and ignore unknown fields).
+
+### 2.1 Open mode (default: `requirePairingCode: false`)
+
+Finding the server is enough (trust on first use, like a Bluetooth speaker without a PIN):
+
+- `POST /api/pair/request` → `200 { "token": "<secret>", "serverId": "...", "serverName": "PC-EDGAR" }`,
+  the same shape as `/api/pair/confirm`. The token is stored exactly like a confirmed pairing
+  (pairing again from the same `deviceId` replaces its previous token).
+- The PC shows **one tray balloon** per pairing, "<deviceName> connected to Audio PC" (sanitized
+  name), so the owner notices new devices, and logs it. Revoking from the tray still works, but
+  in open mode a revoked device can simply pair again; to keep devices out, turn the code on.
+- Limits (all `429 rate_limited`), so a script on the LAN cannot mint unbounded tokens or
+  `paired.json` entries: 10 requests per minute per IP address; 30 requests per minute in
+  total, across all addresses; at most **50 paired devices** — a new `deviceId` beyond that is refused with a
+  message telling the owner to revoke devices from the tray (the oldest device is **not**
+  evicted: that would let anyone on the LAN kick the owner's devices out). Re-pairing a
+  `deviceId` that is already paired is always allowed.
+- `/api/pair/confirm` is not used; any `requestId` is unknown → `410 pairing_expired`.
+
+### 2.2 Code mode (`requirePairingCode: true`) — an optional second factor
+
+On top of finding the server, the user must type a code that only the PC shows:
+
+1. `POST /api/pair/request` → `200 { "requestId": "<opaque>", "expiresIn": 120 }`.
    The server generates a random **6-digit code** and shows it on the PC (tray balloon /
-   notification + the tray window), together with `deviceName`. One pending request per
+   notification + the tray menu), together with `deviceName`. One pending request per
    `deviceId`: a new request from the same IP address replaces the old one.
-   - `deviceName` (max 64) and `deviceId` (max 128) are required; control and format characters
-     (including bidi overrides) are stripped and the result trimmed before the limits apply, and
-     an empty result is `400 bad_request`.
    - Limits (all `429 rate_limited`): 5 requests per minute per IP address; at most 2 pending
      requests per IP address; at most 10 pending requests in total. A new request never evicts
      someone else's pending request.
-2. The user types the code on the phone.
+2. The user types the code on the phone (the clients explain that the code is in the PC
+   notification or behind a right-click on the tray icon).
 3. `POST /api/pair/confirm` — body `{ "requestId": "...", "code": "123456" }`
    → `200 { "token": "<secret>", "serverId": "...", "serverName": "PC-EDGAR" }`.
    - Wrong code → `403 pairing_bad_code` (5 wrong attempts per request → `423 pairing_locked`,
@@ -109,6 +141,10 @@ Pairing (trust on first use, like Bluetooth):
      `/api/pair/request` and `/api/pair/confirm` answer `423 pairing_locked` (with a message
      telling the user what to do) until the user chooses "Allow pairing again" in the tray menu.
      The tray shows one balloon when this happens. Already paired devices are not affected.
+     The lock only exists in code mode: switching the tray item to open mode implies unlocking
+     (and discards pending codes, whose clients get `410` and simply request again).
+
+Switching modes never affects already paired devices; it only changes how new pairings work.
 
 Tokens: 32 random bytes, base64url without padding. The server stores only their SHA-256 hash,
 with `deviceId`, `deviceName`, `createdAt`, `lastSeen`. Pairing again from the same
@@ -215,8 +251,12 @@ Same auth as above (legacy token or paired token; `?token=` also accepted; bare
 
 `<dataDir>` = `%APPDATA%\AudioPC\`:
 
-- `config.json` — `{ "serverId", "port": 7799, "name": null, "legacyToken": null, "presets": {}, "allowedHosts": null }`
+- `config.json` — `{ "serverId", "port": 7799, "name": null, "legacyToken": null, "presets": {}, "allowedHosts": null, "requirePairingCode": false }`
   (`name: null` → use the PC name).
+  - `requirePairingCode`: `false` (default, also when the field is missing) = open pairing,
+    `true` = code mode (§2). The tray item "Require a code to pair" toggles it and saves it at
+    once, rewriting only that field (every other field, known or not, is kept). Read at startup
+    and changed live only through the tray.
   - `allowedHosts`: optional array of extra host names accepted in the `Host` header (request
     rules at the top), e.g. `["audio.home.arpa", "pc-edgar.mydomain"]`, for clients that reach
     the PC by a DNS name not covered by the defaults. Case-insensitive, without port.
@@ -263,7 +303,9 @@ Windows names outputs `"<connector> (<device>)"`, e.g. `"Altavoces (JBL Tour Pro
 
 The server serves the web panel from `wwwroot/` at `/`. The panel has no token embedded: on
 first use it runs the same pairing flow (`deviceName` = "Navegador"/"Browser" + user agent
-summary) and keeps the token in `localStorage`.
+summary) and keeps the token in `localStorage`. In open mode the request already returns the
+token, so no code UI is shown; after "Unpair this browser" the panel waits for the user to click
+"Pair" instead of pairing again on its own.
 
 Panel responses carry `Content-Security-Policy: default-src 'self'; img-src 'self' data:;
 style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:;

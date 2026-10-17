@@ -38,6 +38,7 @@ internal sealed class TrayApp : ApplicationContext
         _icon.DoubleClick += (_, _) => OpenPanel();
 
         _pairing.CodeIssued += OnCodeIssued;
+        _pairing.OpenPaired += OnOpenPaired;
         _pairing.LockChanged += OnPairingLockChanged;
         _tooltipTimer = new System.Threading.Timer(_ => RefreshTooltip(), null, 0, Timeout.Infinite);
         _audio.Changed += OnAudioChanged;
@@ -83,6 +84,14 @@ internal sealed class TrayApp : ApplicationContext
         var name = TextSafety.Clean(p.DeviceName);
         var msg = T($"Código para {name}: {PairingService.Format(p.Code)}", $"Code for {name}: {PairingService.Format(p.Code)}");
         Balloon(msg, ToolTipIcon.Info);
+    }
+
+    // Open pairing needs no action from the owner, so this balloon is the only sign that a new
+    // device can now control the audio; one per pairing.
+    private void OnOpenPaired(string deviceName)
+    {
+        var name = TextSafety.Clean(deviceName);
+        Balloon(T($"{name} se conectó a Audio PC", $"{name} connected to Audio PC"), ToolTipIcon.Info);
     }
 
     private void OnPairingLockChanged(object? sender, EventArgs e)
@@ -136,11 +145,22 @@ internal sealed class TrayApp : ApplicationContext
         }
         menu.Items.Add(devices);
 
+        // Second factor, off by default. Applies to new pairings only; paired devices keep working.
+        var requireCode = _data.Config.RequirePairingCode;
+        menu.Items.Add(new ToolStripMenuItem(T("Pedir código al emparejar", "Require a code to pair"), null, (_, _) => SetRequireCode(!requireCode))
+        { Checked = requireCode, CheckOnClick = false });
+
         menu.Items.Add(new ToolStripMenuItem(T("Iniciar con Windows", "Start with Windows"), null, (_, _) => SetAutostart(!IsAutostart()))
         { Checked = IsAutostart(), CheckOnClick = false });
         menu.Items.Add(T("Abrir carpeta de datos", "Open data folder"), null, (_, _) => Launch(_data.Dir));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(T("Salir", "Exit"), null, (_, _) => ExitThread());
+    }
+
+    private void SetRequireCode(bool on)
+    {
+        _data.SetRequirePairingCode(on);
+        if (!on) _pairing.EnterOpenMode(); // drops the wrong-code lock and pending codes (see EnterOpenMode)
     }
 
     private void OpenPanel() => Launch($"http://localhost:{_port}/");
@@ -170,6 +190,7 @@ internal sealed class TrayApp : ApplicationContext
         {
             _audio.Changed -= OnAudioChanged;
             _pairing.CodeIssued -= OnCodeIssued;
+            _pairing.OpenPaired -= OnOpenPaired;
             _pairing.LockChanged -= OnPairingLockChanged;
             _tooltipTimer.Dispose();
             _icon.Visible = false; // otherwise the ghost icon lingers until the mouse passes over it

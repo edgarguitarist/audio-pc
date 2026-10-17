@@ -46,7 +46,7 @@
 
     <string name="pair_title">Pair with %1$s</string>
     <string name="pair_subtitle">Enter the 6-digit code shown on your PC.</string>
-    <string name="pair_requesting">Asking the PC for a code…</string>
+    <string name="pair_requesting">Connecting to the PC…</string>
     <string name="pair_confirming">Checking the code…</string>
     <string name="pair_expires_in">Code expires in %1$s</string>
     <string name="pair_new_code">Request a new code</string>
@@ -55,6 +55,9 @@
     <string name="pair_locked">Too many wrong attempts. Request a new code.</string>
     <string name="pair_network">Couldn\'t reach the PC.</string>
     <string name="pair_other">The PC refused the request.</string>
+    <string name="pair_blocked">Pairing is blocked on the PC after too many wrong codes. On the PC, choose “Allow pairing again” in the Audio PC tray menu.</string>
+    <string name="pair_rate_limited">The PC isn\'t accepting new devices right now. Try again in a minute, or revoke old devices from the Audio PC tray menu.</string>
+    <string name="pair_hint">The code shows in the PC notification, or right-click the Audio PC icon next to the clock.</string>
 
     <string name="settings_servers">Paired PCs</string>
     <string name="settings_active">Active</string>

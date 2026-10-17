@@ -1,5 +1,6 @@
 package com.edgarguitarist.audiopc.widget
 
+import android.annotation.SuppressLint
 import android.content.Context
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -89,6 +90,7 @@ class OutputButtonWidget : GlanceAppWidget() {
         provideContent {
             // Reload on every Widgets.update: also picks up the output chosen in the config screen.
             val version by Widgets.version.collectAsState()
+            @SuppressLint("ProduceStateDoesNotAssignValue") // false positive, see NowPlayingWidget
             val m by produceState(initial, version) { if (version != v0) value = load(context, id) }
             val (name, art, action, dimmed, current) = m
             Box(

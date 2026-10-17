@@ -82,9 +82,13 @@ fun PairScreen(vm: AppViewModel, target: Screen.Pair, onBack: () -> Unit) {
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(8.dp))
-            Text(
-                stringResource(R.string.pair_subtitle), color = cs.onSurfaceVariant, textAlign = TextAlign.Center,
-            )
+            // Only once the PC asked for a code: with open pairing the request already pairs us,
+            // and "enter the code" would flash for nothing.
+            if (ui.phase == PairPhase.ENTER || ui.phase == PairPhase.CONFIRMING) {
+                Text(
+                    stringResource(R.string.pair_subtitle), color = cs.onSurfaceVariant, textAlign = TextAlign.Center,
+                )
+            }
             Spacer(Modifier.height(32.dp))
 
             when (ui.phase) {
@@ -104,12 +108,20 @@ fun PairScreen(vm: AppViewModel, target: Screen.Pair, onBack: () -> Unit) {
                         )
                     }
                     Spacer(Modifier.height(16.dp))
+                    Text(
+                        stringResource(R.string.pair_hint), color = cs.onSurfaceVariant, fontSize = 13.sp,
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(Modifier.height(8.dp))
                     TextButtonLike(stringResource(R.string.pair_new_code)) { vm.requestPairing(target) }
                 }
                 PairPhase.FAILED -> {
                     Text(pairErrorText(ui.error ?: PairError.OTHER), color = cs.error, textAlign = TextAlign.Center)
                     Spacer(Modifier.height(20.dp))
-                    Button(onClick = { vm.requestPairing(target) }) { Text(stringResource(R.string.pair_new_code)) }
+                    // No requestId: the request itself failed, so there was never a code to renew.
+                    Button(onClick = { vm.requestPairing(target) }) {
+                        Text(stringResource(if (ui.requestId == null) R.string.retry else R.string.pair_new_code))
+                    }
                 }
             }
         }
@@ -122,6 +134,8 @@ private fun pairErrorText(e: PairError) = stringResource(
         PairError.BAD_CODE -> R.string.pair_bad_code
         PairError.EXPIRED -> R.string.pair_expired
         PairError.LOCKED -> R.string.pair_locked
+        PairError.BLOCKED -> R.string.pair_blocked
+        PairError.RATE_LIMITED -> R.string.pair_rate_limited
         PairError.NETWORK -> R.string.pair_network
         PairError.OTHER -> R.string.pair_other
     }

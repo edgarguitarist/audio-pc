@@ -11,6 +11,7 @@ import com.edgarguitarist.audiopc.data.ApiException
 import com.edgarguitarist.audiopc.data.ConnectionStatus
 import com.edgarguitarist.audiopc.data.DiscoveredServer
 import com.edgarguitarist.audiopc.data.MuteState
+import com.edgarguitarist.audiopc.data.PairStart
 import com.edgarguitarist.audiopc.data.ServiceLocator
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -30,7 +31,7 @@ sealed interface Screen {
 }
 
 enum class PairPhase { REQUESTING, ENTER, CONFIRMING, FAILED }
-enum class PairError { BAD_CODE, EXPIRED, LOCKED, NETWORK, OTHER }
+enum class PairError { BAD_CODE, EXPIRED, LOCKED, BLOCKED, RATE_LIMITED, NETWORK, OTHER }
 
 data class PairUi(
     val phase: PairPhase = PairPhase.REQUESTING,
@@ -137,9 +138,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         pairJob = viewModelScope.launch {
             repo.pairRequest(target.host, target.port)
                 .onSuccess {
-                    pair = PairUi(PairPhase.ENTER, it.requestId, System.currentTimeMillis() + it.expiresIn * 1000L)
+                    when (it) {
+                        // Open pairing (the default): the PC paired us without a code.
+                        is PairStart.Paired -> { pairFor = null; resetTo(Screen.Home) }
+                        is PairStart.NeedsCode ->
+                            pair = PairUi(PairPhase.ENTER, it.requestId, System.currentTimeMillis() + it.expiresIn * 1000L)
+                    }
                 }
-                .onFailure { pair = PairUi(PairPhase.FAILED, error = PairError.NETWORK) }
+                .onFailure { e ->
+                    pair = PairUi(PairPhase.FAILED, error = when ((e as? ApiException)?.status) {
+                        null -> PairError.NETWORK
+                        423 -> PairError.BLOCKED // at request time only the PC-wide lock answers 423
+                        429 -> PairError.RATE_LIMITED
+                        else -> PairError.OTHER
+                    })
+                }
         }
     }
 

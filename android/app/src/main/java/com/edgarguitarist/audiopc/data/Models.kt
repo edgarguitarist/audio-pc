@@ -47,8 +47,25 @@ data class VolumeState(val volume: Int, val muted: Boolean)
 @Serializable
 data class PairRequestBody(val deviceName: String, val deviceId: String)
 
+/**
+ * Respuesta de POST /api/pair/request. Con el emparejamiento abierto (por defecto) trae
+ * [token]/[serverId]/[serverName] y ya está emparejado; si la PC pide código trae
+ * [requestId]/[expiresIn]. Todo opcional para tolerar ambos modos.
+ */
 @Serializable
-data class PairRequestResponse(val requestId: String, val expiresIn: Int)
+data class PairRequestResponse(
+    val requestId: String? = null,
+    val expiresIn: Int = 120,
+    val token: String? = null,
+    val serverId: String? = null,
+    val serverName: String? = null,
+)
+
+/** Resultado de pedir emparejar: ya emparejado, o hace falta el código que muestra la PC. */
+sealed interface PairStart {
+    data class Paired(val server: SavedServer) : PairStart
+    data class NeedsCode(val requestId: String, val expiresIn: Int) : PairStart
+}
 
 @Serializable
 data class PairConfirmBody(val requestId: String, val code: String)
