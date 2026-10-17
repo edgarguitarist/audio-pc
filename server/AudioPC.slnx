@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="AudioPc.Server/AudioPc.Server.csproj" />
+  <Project Path="tools/AudioProbe/AudioProbe.csproj" />
 </Solution>
