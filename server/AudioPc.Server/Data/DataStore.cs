@@ -114,6 +114,17 @@ public sealed class DataStore : IDisposable
         }
     }
 
+    /// <summary>Changes <see cref="ServerConfig.ShowVolumeOsd"/> and persists it (same rules as the pairing flag).</summary>
+    public void SetShowVolumeOsd(bool value)
+    {
+        lock (_configGate)
+        {
+            Config.ShowVolumeOsd = value;
+            _log.LogInformation("showVolumeOsd set to {Value} from the tray", value);
+            PersistField("showVolumeOsd", value);
+        }
+    }
+
     /// <summary>
     /// Writes one field into config.json, re-reading the file so every other field the user wrote
     /// (known or not) survives, exactly like the serverId upgrade in <see cref="LoadConfig"/>.

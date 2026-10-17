@@ -111,6 +111,8 @@ rest_command:
 - **Paired devices**: list and revoke.
 - **Require a code to pair** (off by default): new devices must type a 6-digit code shown on the
   PC. Turn it on if you don't trust everyone on your network.
+- **Show the Windows volume indicator** (on by default): volume and mute changes from the phone also
+  pop up the usual Windows volume flyout on the PC.
 - **Open data folder** (`%APPDATA%\AudioPC`).
 
 ## Troubleshooting

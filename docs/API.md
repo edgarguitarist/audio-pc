@@ -200,11 +200,15 @@ Unknown id / no match → `404 not_found`.
 
 Body: `{ "level": 45 }` (0–100) **or** `{ "delta": -10 }`. Values are clamped to 0–100.
 Setting a level, or a positive delta, also unmutes (like the Windows volume keys).
+The level is applied exactly and the response returns at once; the PC then shows the native
+Windows volume flyout (see `showVolumeOsd`, §6), at most one every 250 ms while a slider is dragged.
 → `200 { "volume": 45, "muted": false }`.
 
 ### `POST /api/mute`
 
 Body: `{ "state": "on" | "off" | "toggle" }` → `200 { "volume": 45, "muted": true }`.
+A real change also shows the Windows flyout (`showVolumeOsd`); asking for the state it already has
+does nothing.
 
 ### `GET /api/images/{file}` — no auth
 
@@ -251,12 +255,19 @@ Same auth as above (legacy token or paired token; `?token=` also accepted; bare
 
 `<dataDir>` = `%APPDATA%\AudioPC\`:
 
-- `config.json` — `{ "serverId", "port": 7799, "name": null, "legacyToken": null, "presets": {}, "allowedHosts": null, "requirePairingCode": false }`
+- `config.json` — `{ "serverId", "port": 7799, "name": null, "legacyToken": null, "presets": {}, "allowedHosts": null, "requirePairingCode": false, "showVolumeOsd": true }`
   (`name: null` → use the PC name).
   - `requirePairingCode`: `false` (default, also when the field is missing) = open pairing,
     `true` = code mode (§2). The tray item "Require a code to pair" toggles it and saves it at
     once, rewriting only that field (every other field, known or not, is kept). Read at startup
     and changed live only through the tray.
+  - `showVolumeOsd`: `true` (default, also when missing) = volume/mute changes made through the API
+    (`/api/volume`, `/api/mute` and the legacy `/audio/volume`, `/audio/mute`) also show the native
+    Windows volume flyout, as if a keyboard volume key were pressed. Windows has no API for it, so the
+    server sends a net-zero pair of volume keys (or the mute key) and then checks the level/mute and
+    restores the exact value through Core Audio if a key was dropped or blocked (e.g. an elevated
+    foreground app). Changes made by Windows itself never trigger it. The tray item "Show the Windows
+    volume indicator" toggles it and saves it at once, like `requirePairingCode`.
   - `allowedHosts`: optional array of extra host names accepted in the `Host` header (request
     rules at the top), e.g. `["audio.home.arpa", "pc-edgar.mydomain"]`, for clients that reach
     the PC by a DNS name not covered by the defaults. Case-insensitive, without port.

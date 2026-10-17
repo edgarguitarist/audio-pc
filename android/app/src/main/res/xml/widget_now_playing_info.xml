@@ -12,5 +12,4 @@
     android:widgetCategory="home_screen"
     android:initialLayout="@layout/glance_default_loading_layout"
     android:previewImage="@drawable/widget_preview_now_playing"
-    android:previewLayout="@layout/widget_preview_now_playing"
     android:description="@string/widget_now_playing_desc" />

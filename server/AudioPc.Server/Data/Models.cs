@@ -17,6 +17,11 @@ public sealed class ServerConfig
     /// must be typed on the client — an optional second factor. Toggled from the tray menu.
     /// </summary>
     public bool RequirePairingCode { get; set; }
+    /// <summary>
+    /// On (default, also when missing): volume/mute changes made through the API also show the
+    /// native Windows volume flyout. Toggled from the tray menu.
+    /// </summary>
+    public bool ShowVolumeOsd { get; set; } = true;
 }
 
 public sealed class PairedDevice

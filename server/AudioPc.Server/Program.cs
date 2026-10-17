@@ -56,9 +56,13 @@ internal static class Program
         var paired = new PairedStore(o.DataDir, data.Config, loggers.CreateLogger("Paired"));
         var pairing = new PairingService(paired);
         using IAudioService audio = o.FakeAudio ? new FakeAudioService() : new CoreAudioService();
+        // Fake audio must never inject real keys.
+        IVolumeControl volume = o.FakeAudio
+            ? new PlainVolumeControl(audio)
+            : new VolumeOsd(audio, () => data.Config.ShowVolumeOsd, new SendInputKeys(), loggers.CreateLogger("VolumeOsd"));
         var composer = new DisplayComposer(data, audio);
-        using var hub = new EventHub(audio, composer, data, paired, loggers.CreateLogger("Events"));
-        var api = new ApiHost(audio, data, paired, pairing, composer, hub, loggers.CreateLogger("Api"));
+        using var hub = new EventHub(audio, composer, data, paired, loggers.CreateLogger("Events"), volume);
+        var api = new ApiHost(audio, volume, data, paired, pairing, composer, hub, loggers.CreateLogger("Api"));
 
         if (o.Dev)
             pairing.CodeIssued += p => log.LogInformation("PAIRING CODE for {Device}: {Code}", p.DeviceName, p.Code);

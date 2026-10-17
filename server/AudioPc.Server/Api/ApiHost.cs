@@ -14,6 +14,7 @@ public sealed class ApiHost
     private static readonly string Version = typeof(ApiHost).Assembly.GetName().Version is { } v ? $"{v.Major}.{v.Minor}.{v.Build}" : "1.0.0";
 
     private readonly IAudioService _audio;
+    private readonly IVolumeControl _vol;
     private readonly DataStore _data;
     private readonly PairedStore _paired;
     private readonly PairingService _pairing;
@@ -27,10 +28,10 @@ public sealed class ApiHost
     private const string PanelCsp = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
         + "script-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 
-    public ApiHost(IAudioService audio, DataStore data, PairedStore paired, PairingService pairing,
+    public ApiHost(IAudioService audio, IVolumeControl vol, DataStore data, PairedStore paired, PairingService pairing,
         DisplayComposer composer, EventHub hub, ILogger log)
     {
-        _audio = audio; _data = data; _paired = paired; _pairing = pairing; _composer = composer; _hub = hub; _log = log;
+        _audio = audio; _vol = vol; _data = data; _paired = paired; _pairing = pairing; _composer = composer; _hub = hub; _log = log;
         _hosts = new HostGuard(() => ((IEnumerable<string?>?)_data.Config.AllowedHosts ?? []).Append(ServerName), log);
     }
 
@@ -326,8 +327,8 @@ public sealed class ApiHost
             var delta = Num(b, "delta");
             if (level == null && delta == null) return Err(400, "bad_request", "Provide numeric \"level\" or \"delta\".");
             return Guard(() => Results.Json(Vol(level != null
-                ? _audio.SetVolume(Math.Clamp(level.Value, 0, 100))
-                : _audio.ChangeVolume(delta!.Value))));
+                ? _vol.SetVolume(Math.Clamp(level.Value, 0, 100))
+                : _vol.ChangeVolume(delta!.Value))));
         });
 
         app.MapPost("/api/mute", async (HttpContext ctx) =>
@@ -335,7 +336,7 @@ public sealed class ApiHost
             var body = await ReadBody(ctx.Request);
             var state = body is { } b ? Str(b, "state")?.ToLowerInvariant() : null;
             if (state is not ("on" or "off" or "toggle")) return Err(400, "bad_request", "\"state\" must be on, off or toggle.");
-            return Guard(() => Results.Json(Vol(_audio.SetMute(ParseMute(state)))));
+            return Guard(() => Results.Json(Vol(_vol.SetMute(ParseMute(state)))));
         });
 
         app.MapGet("/api/images/{file}", (HttpContext ctx, string file) =>
@@ -396,7 +397,7 @@ public sealed class ApiHost
             if ((!isLevel && !q.ContainsKey("delta")) || !double.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var n) || double.IsNaN(n) || double.IsInfinity(n))
                 return LegacyErr(400, "falta level o delta numérico");
             var i = (int)Math.Round(Math.Clamp(n, -1000, 1000));
-            return Guard(() => Results.Json(LegacyVol(isLevel ? _audio.SetVolume(Math.Clamp(i, 0, 100)) : _audio.ChangeVolume(i))), legacy: true);
+            return Guard(() => Results.Json(LegacyVol(isLevel ? _vol.SetVolume(Math.Clamp(i, 0, 100)) : _vol.ChangeVolume(i))), legacy: true);
         });
 
         app.MapPost("/audio/mute", (HttpContext ctx) =>
@@ -405,7 +406,7 @@ public sealed class ApiHost
             if (string.IsNullOrEmpty(state)) state = "toggle";
             state = state.ToLowerInvariant();
             if (state is not ("on" or "off" or "toggle")) return LegacyErr(400, "state: on, off o toggle");
-            return Guard(() => Results.Json(LegacyVol(_audio.SetMute(ParseMute(state)))), legacy: true);
+            return Guard(() => Results.Json(LegacyVol(_vol.SetMute(ParseMute(state)))), legacy: true);
         });
 
         app.MapPost("/audio/set", (HttpContext ctx) =>

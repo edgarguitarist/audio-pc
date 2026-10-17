@@ -150,6 +150,11 @@ internal sealed class TrayApp : ApplicationContext
         menu.Items.Add(new ToolStripMenuItem(T("Pedir código al emparejar", "Require a code to pair"), null, (_, _) => SetRequireCode(!requireCode))
         { Checked = requireCode, CheckOnClick = false });
 
+        // Native Windows flyout for volume/mute changes made from the phone (on by default).
+        var osd = _data.Config.ShowVolumeOsd;
+        menu.Items.Add(new ToolStripMenuItem(T("Mostrar indicador de volumen de Windows", "Show the Windows volume indicator"), null, (_, _) => _data.SetShowVolumeOsd(!osd))
+        { Checked = osd, CheckOnClick = false });
+
         menu.Items.Add(new ToolStripMenuItem(T("Iniciar con Windows", "Start with Windows"), null, (_, _) => SetAutostart(!IsAutostart()))
         { Checked = IsAutostart(), CheckOnClick = false });
         menu.Items.Add(T("Abrir carpeta de datos", "Open data folder"), null, (_, _) => Launch(_data.Dir));

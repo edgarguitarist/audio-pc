@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@drawable/widget_card_bg" />
-    <item android:width="32dp" android:height="32dp" android:gravity="center"
-        android:drawable="@drawable/ic_tile_output" />
-</layer-list>

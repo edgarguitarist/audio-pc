@@ -10,7 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="..\..\AudioPc.Server\Audio\*.cs" LinkBase="Audio" />
+    <Compile Include="..\..\AudioPc.Server\Audio\*.cs" Exclude="..\..\AudioPc.Server\Audio\VolumeOsd.cs" LinkBase="Audio" />
     <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
   </ItemGroup>
 

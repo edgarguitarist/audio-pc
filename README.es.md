@@ -112,6 +112,8 @@ rest_command:
 - **Dispositivos vinculados**: lista y revocación.
 - **Pedir código al emparejar** (desactivado por defecto): los dispositivos nuevos deben escribir un
   código de 6 dígitos que muestra la PC. Actívalo si no confías en todos los que usan tu red.
+- **Mostrar indicador de volumen de Windows** (activado por defecto): los cambios de volumen y silencio
+  desde el celular también muestran en la PC el indicador de volumen habitual de Windows.
 - **Abrir carpeta de datos** (`%APPDATA%\AudioPC`).
 
 ## Solución de problemas

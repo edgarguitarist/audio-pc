@@ -11,5 +11,4 @@
     android:configure="com.edgarguitarist.audiopc.widget.OutputButtonConfigActivity"
     android:widgetFeatures="reconfigurable"
     android:previewImage="@drawable/widget_preview_output_button"
-    android:previewLayout="@layout/widget_preview_output_button"
     android:description="@string/widget_output_button_desc" />

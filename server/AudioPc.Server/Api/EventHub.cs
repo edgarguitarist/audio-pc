@@ -34,13 +34,23 @@ public sealed class EventHub : IDisposable
     private readonly IAudioService _audio;
     private readonly DisplayComposer _composer;
     private readonly ILogger _log;
+    private readonly IVolumeControl? _vol;
 
-    public EventHub(IAudioService audio, DisplayComposer composer, DataStore data, PairedStore paired, ILogger log)
+    public EventHub(IAudioService audio, DisplayComposer composer, DataStore data, PairedStore paired, ILogger log, IVolumeControl? vol = null)
     {
-        _audio = audio; _composer = composer; _log = log;
-        _audio.Changed += OnChanged;
+        _audio = audio; _composer = composer; _log = log; _vol = vol;
+        _audio.Changed += OnAudioChanged;
+        if (vol != null) vol.Settled += OnChanged; // push the final value once the key blip is over
         data.DevicesReloaded += (_, _) => OnChanged(null, EventArgs.Empty);
         paired.Revoked += Disconnect;
+    }
+
+    // While the OSD key blip is in flight the level is transiently off by 2%: hold the push back
+    // (Settled sends the final value) so clients never show jitter.
+    private void OnAudioChanged(object? sender, EventArgs e)
+    {
+        if (_vol is { IsBlip: true }) return;
+        OnChanged(sender, e);
     }
 
     private void OnChanged(object? sender, EventArgs e)
