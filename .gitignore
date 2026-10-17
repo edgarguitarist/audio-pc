@@ -1,0 +1,24 @@
+# .NET
+server/**/bin/
+server/**/obj/
+server/**/publish/
+*.user
+.vs/
+
+# Android / Gradle
+android/.gradle/
+android/**/build/
+android/local.properties
+android/.kotlin/
+android/.idea/
+*.iml
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# OS / editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

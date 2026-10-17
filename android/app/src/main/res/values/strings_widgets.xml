@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_now_playing_label">Audio PC</string>
+    <string name="widget_output_button_label">Audio output</string>
+    <string name="tile_mute_label">Mute PC</string>
+    <string name="tile_next_output_label">Next output</string>
+</resources>

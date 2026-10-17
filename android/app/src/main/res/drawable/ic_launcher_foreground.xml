@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Altavoz con dos ondas, dentro de la zona segura de 66 dp. Coordenadas del favicon (64) escaladas ×1.05 y centradas. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="64" android:viewportHeight="64">
+    <group android:scaleX="0.58" android:scaleY="0.58" android:pivotX="32" android:pivotY="32">
+        <path android:fillColor="#FF062A26" android:strokeColor="#FF062A26"
+            android:strokeWidth="4.6" android:strokeLineJoin="round" android:strokeLineCap="round"
+            android:pathData="M14,26.5h7l10,-8v27l-10,-8h-7z" />
+        <path android:strokeColor="#FF062A26" android:strokeWidth="4.6" android:strokeLineCap="round"
+            android:pathData="M39,25.5a9,9 0,0 1,0 13" />
+        <path android:strokeColor="#FF062A26" android:strokeWidth="4.6" android:strokeLineCap="round"
+            android:pathData="M45.5,20a17,17 0,0 1,0 24" />
+    </group>
+</vector>
