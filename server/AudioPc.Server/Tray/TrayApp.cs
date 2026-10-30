@@ -83,7 +83,9 @@ internal sealed class TrayApp : ApplicationContext
     {
         if (cur == null || !HeadsetBattery.Matches(cur.RawName)) return "";
         var b = HeadsetBattery.Read();
-        try { _tooltipTimer.Change(b == null ? 60_000 : 10_000, Timeout.Infinite); } catch (ObjectDisposedException) { }
+        // Once a minute is plenty for a battery (5 min while it does not answer); switching
+        // outputs still reads it at once (OnAudioChanged).
+        try { _tooltipTimer.Change(b == null ? 300_000 : 60_000, Timeout.Infinite); } catch (ObjectDisposedException) { }
         if (b == null) return "";
         var state = b.Charging ? T(" (cargando)", " (charging)") : b.Full ? T(" (cargada)", " (full)") : "";
         return $" — {b.Percent}{T(" %", "%")}{state}";
