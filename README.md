@@ -21,6 +21,7 @@ it by itself and pairs with one tap; a 6-digit code can be switched on as a seco
 - Android home-screen widgets and Quick Settings tiles.
 - Web panel for any browser, served by the PC itself.
 - Home Assistant compatible legacy endpoints.
+- Battery percentage and charging state of a Corsair HS80 MAX in the tray tooltip while it is the selected output (read from its USB receiver; works alongside iCUE).
 - Single exe, no installer, optional start with Windows.
 
 ## Screenshots

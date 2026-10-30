@@ -22,6 +22,7 @@ se puede activar como segundo factor.
 - Widgets de pantalla de inicio y mosaicos de Ajustes rápidos en Android.
 - Panel web para cualquier navegador, servido por el propio PC.
 - Endpoints heredados compatibles con Home Assistant.
+- Porcentaje de batería y estado de carga de un Corsair HS80 MAX en el tooltip de la bandeja mientras es la salida seleccionada (se lee del receptor USB; convive con iCUE).
 - Un solo exe, sin instalador, con inicio opcional con Windows.
 
 ## Capturas

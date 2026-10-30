@@ -69,11 +69,24 @@ internal sealed class TrayApp : ApplicationContext
             var id = _audio.GetDefaultOutputId();
             var cur = _audio.GetOutputs().FirstOrDefault(o => o.Id == id);
             var name = cur == null ? "" : " — " + _composer.Compose(cur, _es).Name;
-            var text = "Audio PC" + name;
+            var text = "Audio PC" + name + BatteryText(cur);
             if (text.Length > 127) text = text[..127]; // NotifyIcon.Text hard limit
             _ui.BeginInvoke(() => _icon.Text = text);
         }
         catch { /* audio not ready; keep the old tooltip */ }
+    }
+
+    // Asks the headset only while it is the selected output: when it turns off Windows drops
+    // its endpoint, so nothing is polled overnight (polling an off headset every few seconds all
+    // night coincided with its USB hub dropping out).
+    private string BatteryText(AudioEndpoint? cur)
+    {
+        if (cur == null || !HeadsetBattery.Matches(cur.RawName)) return "";
+        var b = HeadsetBattery.Read();
+        try { _tooltipTimer.Change(b == null ? 60_000 : 10_000, Timeout.Infinite); } catch (ObjectDisposedException) { }
+        if (b == null) return "";
+        var state = b.Charging ? T(" (cargando)", " (charging)") : b.Full ? T(" (cargada)", " (full)") : "";
+        return $" — {b.Percent}{T(" %", "%")}{state}";
     }
 
     // Event handlers below run on request threads: an exception would surface as an HTTP 500
